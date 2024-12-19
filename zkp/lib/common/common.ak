@@ -123,18 +123,22 @@ fn mod_pow(base: Field, exp: Field) -> Field {
   if exp == 0 {
     1
   } else {
-    let result = 1
-    let b = base
-    let e = exp
+    mod_pow_loop(base, exp, 1)
+  }
+}
 
-    while e > 0 {
-      if e % 2 == 1 {
-        result = mod_mul(result, b)
-      }
-      b = mod_mul(b, b)
-      e = e / 2
+fn mod_pow_loop(b, e, result) {
+  if e > 0 {
+    when e % 2 is {
+      1 -> let result = mod_mul(result, b)
     }
-
+    mod_pow_loop(
+      mod_mul(b, b),
+      e / 2,
+      result
+    )
+  }
+  else {
     result
   }
 }
@@ -299,14 +303,14 @@ pub fn g2_decompress(bytes: ByteArray) -> Option<G2Point> {
 fn fp2_sqrt(a: (Field, Field)) -> Option<(Field, Field)> {
   // Simplified implementation for square root in Fp2
   // This is a placeholder - real implementation needs more complex math
-  when (mod_sqrt(a.0), mod_sqrt(a.1)) is {
+  when (mod_sqrt(a.1st), mod_sqrt(a.2nd)) is {
     (Some(r1), Some(r2)) -> Some((r1, r2))
     _ -> None
   }
 }
 
 fn fp2_neg(a: (Field, Field)) -> (Field, Field) {
-  (mod_neg(a.0), mod_neg(a.1))
+  (mod_neg(a.1st), mod_neg(a.2nd))
 }
 
 pub fn miller_loop(p1: G1Point, p2: G2Point) -> ByteArray {
@@ -342,7 +346,7 @@ pub fn serialize_vkey(vk: VerificationKey) -> ByteArray {
   // Serialize IC points
   let ic_bytes = #""
   for point in vk.ic {
-    ic_bytes = bytearray.concat(ic_bytes, g1_compress(point))
+    let ic_bytes = bytearray.concat(ic_bytes, g1_compress(point))
   }
   
   // Combine all parts
@@ -391,8 +395,8 @@ pub fn deserialize_vkey(bytes: ByteArray) -> Option<VerificationKey> {
           let point_bytes = bytearray.slice(remaining_bytes, i * 33, 33)
           when g1_decompress(point_bytes) is {
             Some(point) -> {
-              ic = [point, ..ic]
-              i = i + 1
+              list.push(ic, point)
+              let i = i + 1
             }
             None -> {
               return None
@@ -419,15 +423,16 @@ pub fn deserialize_vkey(bytes: ByteArray) -> Option<VerificationKey> {
 pub fn serialize_field(f: Field) -> ByteArray {
   // Serialize a field element to a 32-byte array
   // This is a simplified implementation - you might want to add more error checking
-  let bytes = []
-  let value = f
-  let i = 0
-  while i < 32 {
-    bytes = [value % 256, ..bytes]
-    value = value / 256
-    i = i + 1
+  serialize_loop([], f, 0)
+}
+
+pub fn serialize_loop(bytes, value, i) {
+  if i < 32 {
+    serialize_loop(list.push(bytes, value % 256), value / 256, i + 1)
+  } else
+  {
+    bytes
   }
-  bytes
 }
 
 pub fn deserialize_field(bytes: ByteArray) -> Option<Field> {
@@ -435,10 +440,7 @@ pub fn deserialize_field(bytes: ByteArray) -> Option<Field> {
   if bytearray.length(bytes) != 32 {
     None
   } else {
-    let result = 0
-    for byte in byte_list {
-      result = (result * 256 + byte) % bls12_381_prime
-    }
+    let result = list.foldl(byte_list, 0, fn(result, byte) {((result * 256 + byte) % bls12_381_prime)})
     if result < bls12_381_prime {
       Some(result)
     } else {
@@ -451,14 +453,9 @@ pub fn deserialize_field(bytes: ByteArray) -> Option<Field> {
 pub fn hash_to_field(data: ByteArray) -> Field {
   // Hash the input data and reduce it modulo the field characteristic
   let hash = crypto.blake2b_256(data)
-  let result = 0
   let bytes = bytearray.to_list(hash)
   
-  for byte in bytes {
-    result = (result * 256 + byte) % bls12_381_prime
-  }
-  
-  result
+  list.foldl(byte_list, 0, fn(result, byte) {((result * 256 + byte) % bls12_381_prime)})
 }
 
 pub fn hash_to_curve(data: ByteArray) -> G1Point {
