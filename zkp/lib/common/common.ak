@@ -1,22 +1,27 @@
+use aiken/collection/list
 use aiken/crypto
+use aiken/primitive/bytearray
 
 // Constants for BLS12-381
-pub const bls12_381_prime = 52435875175126190479447740508185965837690552500527637822603658699938581184513
+pub const bls12_381_prime =
+  52435875175126190479447740508185965837690552500527637822603658699938581184513
 
 // Additional curve constants
-pub const bls12_381_r = 52435875175126190479447740508185965837690552500527637822603658699938581184513
+pub const bls12_381_r =
+  52435875175126190479447740508185965837690552500527637822603658699938581184513
+
 pub const bls12_381_h = 1
 
 // Common types for ZKP systems
-pub type Field = Int
+pub type Field =
+  Int
 
 pub type Point {
-  x: Field,
-  y: Field,
-  z: Field,
+  Point { x: Field, y: Field, z: Field }
 }
 
-pub type G1Point = Point
+pub type G1Point =
+  Point
 
 pub type G2Point {
   x: (Field, Field),
@@ -49,11 +54,11 @@ pub type VerificationError {
 
 // Common utility functions for field operations
 pub fn mod_add(a: Field, b: Field) -> Field {
-  (a + b) % bls12_381_prime
+  ( a + b ) % bls12_381_prime
 }
 
 pub fn mod_sub(a: Field, b: Field) -> Field {
-  let result = (a - b) % bls12_381_prime
+  let result = ( a - b ) % bls12_381_prime
   if result < 0 {
     result + bls12_381_prime
   } else {
@@ -62,7 +67,7 @@ pub fn mod_sub(a: Field, b: Field) -> Field {
 }
 
 pub fn mod_mul(a: Field, b: Field) -> Field {
-  (a * b) % bls12_381_prime
+  a * b % bls12_381_prime
 }
 
 pub fn mod_neg(a: Field) -> Field {
@@ -82,7 +87,13 @@ pub fn mod_inv(a: Field, p: Field) -> Option<Field> {
     let (last_r, last_s) = extended_gcd(a, p)
     if last_r == 1 {
       let result = last_s % p
-      Some(if result < 0 { result + p } else { result })
+      Some(
+        if result < 0 {
+          result + p
+        } else {
+          result
+        },
+      )
     } else {
       None
     }
@@ -107,9 +118,8 @@ pub fn mod_sqrt(a: Field) -> Option<Field> {
     Some(0)
   } else {
     // For p ≡ 3 (mod 4), sqrt(a) = a^((p+1)/4) if a is a quadratic residue
-    let exp = (bls12_381_prime + 1) / 4
+    let exp = ( bls12_381_prime + 1 ) / 4
     let sqrt = mod_pow(a, exp)
-    
     // Verify the result
     if mod_mul(sqrt, sqrt) == a {
       Some(sqrt)
@@ -128,17 +138,15 @@ fn mod_pow(base: Field, exp: Field) -> Field {
 }
 
 fn mod_pow_loop(b, e, result) {
+  // may be able to do this with list.foldl2
   if e > 0 {
-    when e % 2 is {
-      1 -> let result = mod_mul(result, b)
-    }
-    mod_pow_loop(
-      mod_mul(b, b),
-      e / 2,
-      result
-    )
-  }
-  else {
+    let result =
+      when e % 2 is {
+        1 -> mod_mul(result, b)
+        _ -> result
+      }
+    mod_pow_loop(mod_mul(b, b), e / 2, result)
+  } else {
     result
   }
 }
@@ -146,7 +154,7 @@ fn mod_pow_loop(b, e, result) {
 // Point operations (expanding on existing ones)
 pub fn g1_generator() -> G1Point {
   // BLS12-381 G1 generator coordinates
-  G1Point {
+  Point {
     x: 3685416753713387016781088315183077757961620795782546409894578378688607592378376318836054947676345821548104185464507,
     y: 1339506544944476473020471379941921221584933875938349620426543736416511423956333506472724655353366534992391756441569,
     z: 1,
@@ -186,7 +194,7 @@ pub fn g1_compress(p: G1Point) -> ByteArray {
         // Compress point by keeping x coordinate and y's sign
         let compressed = serialize_field(x_affine)
         // Add a bit for y's sign (we'll use the last byte)
-        let is_y_negative = y_affine > (bls12_381_prime / 2)
+        let is_y_negative = y_affine > bls12_381_prime / 2
         if is_y_negative {
           bytearray.concat(compressed, #"01")
         } else {
@@ -199,29 +207,27 @@ pub fn g1_compress(p: G1Point) -> ByteArray {
 }
 
 pub fn g1_decompress(bytes: ByteArray) -> Option<G1Point> {
-  if bytearray.length(bytes) != 33 {
+  if bytearray.length(bytes) != 66 {
+    // bytearrays are actually arrays of half-bytes instead of bytes: (32 bytes + sign) x 2 = 66
     None
   } else {
-    let x_bytes = bytearray.slice(bytes, 0, 32)
-    let flag_byte = bytearray.slice(bytes, 32, 1)
-    
+    let x_bytes = bytearray.slice(bytes, 0, 63)
+    let is_negative = bytearray.slice(bytes, 64, 65) == #"01"
     when deserialize_field(x_bytes) is {
       Some(x) -> {
         // Compute y^2 = x^3 + 4
         let x_squared = mod_mul(x, x)
         let x_cubed = mod_mul(x_squared, x)
         let y_squared = mod_add(x_cubed, 4)
-        
         when mod_sqrt(y_squared) is {
           Some(y) -> {
-            let is_negative = bytearray.to_list(flag_byte)[0] == 1
-            let final_y = if is_negative && y > (bls12_381_prime / 2) || 
-                            !is_negative && y <= (bls12_381_prime / 2) {
-              y
-            } else {
-              mod_neg(y)
-            }
-            Some(G1Point { x: x, y: final_y, z: 1 })
+            let final_y =
+              if is_negative && y > bls12_381_prime / 2 || !is_negative && y <= bls12_381_prime / 2 {
+                y
+              } else {
+                mod_neg(y)
+              }
+            Some(Point { x, y: final_y, z: 1 })
           }
           None -> None
         }
@@ -239,25 +245,23 @@ pub fn g2_compress(p: G2Point) -> ByteArray {
     // Convert to affine coordinates first
     let (z1, z2) = p.z
     let z_inv = mod_inv(z1, bls12_381_prime)
-    
     when z_inv is {
       Some(z_inv_val) -> {
         let z_inv_squared = fp2_square((z_inv_val, z2))
         let (x_affine_1, x_affine_2) = fp2_mul(p.x, z_inv_squared)
         let (y_affine_1, y_affine_2) = fp2_mul(p.y, z_inv_squared)
-        
         // Compress point by keeping x-coordinate and y's sign
         let x1_bytes = serialize_field(x_affine_1)
         let x2_bytes = serialize_field(x_affine_2)
-        
         // Add a bit for y's sign
-        let is_y_negative = y_affine_1 > (bls12_381_prime / 2)
-        let flag_byte = if is_y_negative { #"01" } else { #"00" }
-        
-        bytearray.concat(
-          bytearray.concat(x1_bytes, x2_bytes),
-          flag_byte
-        )
+        let is_y_negative = y_affine_1 > bls12_381_prime / 2
+        let flag_byte =
+          if is_y_negative {
+            #"01"
+          } else {
+            #"00"
+          }
+        bytearray.concat(bytearray.concat(x1_bytes, x2_bytes), flag_byte)
       }
       None -> crypto.blake2b_256(#"00")
     }
@@ -265,32 +269,33 @@ pub fn g2_compress(p: G2Point) -> ByteArray {
 }
 
 pub fn g2_decompress(bytes: ByteArray) -> Option<G2Point> {
-  if bytearray.length(bytes) != 65 {
+  if bytearray.length(bytes) != 130 {
+    // (64 bytes + sign) x 2 = 130
     None
   } else {
-    let x1_bytes = bytearray.slice(bytes, 0, 32)
-    let x2_bytes = bytearray.slice(bytes, 32, 32)
-    let flag_byte = bytearray.slice(bytes, 64, 1)
-    
+    let x1_bytes = bytearray.slice(bytes, 0, 63)
+    let x2_bytes = bytearray.slice(bytes, 64, 127)
+    let flag_byte = bytearray.slice(bytes, 128, 129)
     when (deserialize_field(x1_bytes), deserialize_field(x2_bytes)) is {
       (Some(x1), Some(x2)) -> {
         // Compute y^2 = x^3 + 4(1 + i)
         let x = (x1, x2)
         let x_squared = fp2_square(x)
         let x_cubed = fp2_mul(x_squared, x)
-        let b2 = (4, 4) // 4(1 + i)
+        let b2 = (4, 4)
+        // 4(1 + i)
         let y_squared = fp2_add(x_cubed, b2)
-        
         // Try to find y in Fp2
         when fp2_sqrt(y_squared) is {
           Some((y1, y2)) -> {
-            let is_negative = bytearray.to_list(flag_byte)[0] == 1
-            let final_y = if is_negative {
-              fp2_neg((y1, y2))
-            } else {
-              (y1, y2)
-            }
-            Some(G2Point { x: x, y: final_y, z: (1, 0) })
+            let is_negative = flag_byte == #"01"
+            let final_y =
+              if is_negative {
+                fp2_neg((y1, y2))
+              } else {
+                (y1, y2)
+              }
+            Some(G2Point { x, y: final_y, z: (1, 0) })
           }
           None -> None
         }
@@ -342,32 +347,31 @@ pub fn serialize_vkey(vk: VerificationKey) -> ByteArray {
   let beta_g2_bytes = g2_compress(vk.beta_g2)
   let gamma_g2_bytes = g2_compress(vk.gamma_g2)
   let delta_g2_bytes = g2_compress(vk.delta_g2)
-  
   // Serialize IC points
-  let ic_bytes = #""
-  for point in vk.ic {
-    let ic_bytes = bytearray.concat(ic_bytes, g1_compress(point))
-  }
-  
+  let ic_bytes =
+    list.foldl(
+      vk.ic,
+      #"",
+      fn(point, result) { bytearray.concat(result, g1_compress(point)) },
+    )
+
   // Combine all parts
   bytearray.concat(
     bytearray.concat(
       bytearray.concat(
-        bytearray.concat(
-          alpha_g1_bytes,
-          beta_g2_bytes
-        ),
-        gamma_g2_bytes
+        bytearray.concat(alpha_g1_bytes, beta_g2_bytes),
+        gamma_g2_bytes,
       ),
-      delta_g2_bytes
+      delta_g2_bytes,
     ),
-    ic_bytes
+    ic_bytes,
   )
 }
 
 pub fn deserialize_vkey(bytes: ByteArray) -> Option<VerificationKey> {
   // Minimum length check (without IC points)
-  let min_length = 33 + (3 * 65) // 1 G1 point + 3 G2 points
+  let min_length = 33 + 3 * 65
+  // 1 G1 point + 3 G2 points
   if bytearray.length(bytes) < min_length {
     None
   } else {
@@ -376,42 +380,28 @@ pub fn deserialize_vkey(bytes: ByteArray) -> Option<VerificationKey> {
     let beta_g2_bytes = bytearray.slice(bytes, 33, 65)
     let gamma_g2_bytes = bytearray.slice(bytes, 98, 65)
     let delta_g2_bytes = bytearray.slice(bytes, 163, 65)
-    
-    when (
-      g1_decompress(alpha_g1_bytes),
-      g2_decompress(beta_g2_bytes),
-      g2_decompress(gamma_g2_bytes),
-      g2_decompress(delta_g2_bytes)
-    ) is {
+    when
+      (
+        g1_decompress(alpha_g1_bytes),
+        g2_decompress(beta_g2_bytes),
+        g2_decompress(gamma_g2_bytes),
+        g2_decompress(delta_g2_bytes),
+      )
+    is {
       (Some(alpha_g1), Some(beta_g2), Some(gamma_g2), Some(delta_g2)) -> {
         // Deserialize IC points
-        let remaining_bytes = bytearray.slice(bytes, 228, bytearray.length(bytes) - 228)
+        let remaining_bytes =
+          bytearray.slice(bytes, 228, bytearray.length(bytes) - 228)
         let num_ic_points = bytearray.length(remaining_bytes) / 33
-        
-        let ic = []
-        let i = 0
-        
-        while i < num_ic_points {
-          let point_bytes = bytearray.slice(remaining_bytes, i * 33, 33)
-          when g1_decompress(point_bytes) is {
-            Some(point) -> {
-              list.push(ic, point)
-              let i = i + 1
-            }
-            None -> {
-              return None
-            }
-          }
-        }
-        
+        let ic = ic_point_loop(remaining_bytes, num_ic_points, [])
         Some(
           VerificationKey {
-            alpha_g1: alpha_g1,
-            beta_g2: beta_g2,
-            gamma_g2: gamma_g2,
-            delta_g2: delta_g2,
+            alpha_g1,
+            beta_g2,
+            gamma_g2,
+            delta_g2,
             ic: list.reverse(ic),
-          }
+          },
         )
       }
       _ -> None
@@ -419,28 +409,44 @@ pub fn deserialize_vkey(bytes: ByteArray) -> Option<VerificationKey> {
   }
 }
 
-// Serialization functions
-pub fn serialize_field(f: Field) -> ByteArray {
-  // Serialize a field element to a 32-byte array
-  // This is a simplified implementation - you might want to add more error checking
-  serialize_loop([], f, 0)
-}
-
-pub fn serialize_loop(bytes, value, i) {
-  if i < 32 {
-    serialize_loop(list.push(bytes, value % 256), value / 256, i + 1)
-  } else
-  {
-    bytes
+pub fn ic_point_loop(
+  bytes: ByteArray,
+  i: Int,
+  ic: List<G1Point>,
+) -> List<G1Point> {
+  if bytearray.length(bytes) == 0 || i > 0 {
+    ic
+  } else {
+    let point_bytes = bytearray.slice(bytes, 0, 32)
+    when g1_decompress(point_bytes) is {
+      Some(point) ->
+        ic_point_loop(
+          bytearray.slice(bytes, 33, bytearray.length(bytes) - 1),
+          i - 1,
+          list.push(ic, point),
+        )
+      None -> ic
+    }
   }
 }
 
+// Serialization functions
+pub fn serialize_field(f: Field) -> ByteArray {
+  // Serialize a field element to a 32-byte array
+  // double check the direction. may want this to be little endian
+  bytearray.from_int_big_endian(f, 32)
+}
+
 pub fn deserialize_field(bytes: ByteArray) -> Option<Field> {
-  let byte_list = bytearray.to_list(bytes)
   if bytearray.length(bytes) != 32 {
     None
   } else {
-    let result = list.foldl(byte_list, 0, fn(result, byte) {((result * 256 + byte) % bls12_381_prime)})
+    let result =
+      bytearray.foldl(
+        bytes,
+        0,
+        fn(result, byte) { ( result * 256 + byte ) % bls12_381_prime },
+      )
     if result < bls12_381_prime {
       Some(result)
     } else {
@@ -454,8 +460,11 @@ pub fn hash_to_field(data: ByteArray) -> Field {
   // Hash the input data and reduce it modulo the field characteristic
   let hash = crypto.blake2b_256(data)
   let bytes = bytearray.to_list(hash)
-  
-  list.foldl(byte_list, 0, fn(result, byte) {((result * 256 + byte) % bls12_381_prime)})
+  list.foldl(
+    byte_list,
+    0,
+    fn(result, byte) { ( result * 256 + byte ) % bls12_381_prime },
+  )
 }
 
 pub fn hash_to_curve(data: ByteArray) -> G1Point {
@@ -463,33 +472,33 @@ pub fn hash_to_curve(data: ByteArray) -> G1Point {
   let u = hash_to_field(data)
   let u_squared = mod_mul(u, u)
   let u_squared_plus_1 = mod_add(u_squared, 1)
-  
   // Calculate x = -(u^2) / (u^2 + 1) if u^2 ≠ -1
   when mod_inv(u_squared_plus_1, bls12_381_prime) is {
     Some(inv) -> {
       let x = mod_mul(mod_neg(u_squared), inv)
-      
       // Calculate y^2 = x^3 + 4
       let x_squared = mod_mul(x, x)
       let x_cubed = mod_mul(x_squared, x)
       let y_squared = mod_add(x_cubed, 4)
-      
       // Try to find y
       when mod_sqrt(y_squared) is {
         Some(y) -> {
           // Ensure y has the same sign as u
-          let final_y = if (y > (bls12_381_prime / 2)) == (u > (bls12_381_prime / 2)) {
-            y
-          } else {
-            mod_neg(y)
-          }
-          G1Point { x: x, y: final_y, z: 1 }
+          let final_y =
+            if y > bls12_381_prime / 2 == ( u > bls12_381_prime / 2 ) {
+              y
+            } else {
+              mod_neg(y)
+            }
+          G1Point { x, y: final_y, z: 1 }
         }
-        None -> g1_generator() // Fallback to generator if sqrt fails
+        None -> g1_generator()
       }
     }
-    None -> g1_generator() // Fallback to generator if inverse doesn't exist
+    // Fallback to generator if sqrt fails
+    None -> g1_generator()
   }
+  // Fallback to generator if inverse doesn't exist
 }
 
 pub fn g1_add(p1: G1Point, p2: G1Point) -> G1Point {
@@ -525,15 +534,13 @@ pub fn g1_add(p1: G1Point, p2: G1Point) -> G1Point {
       let v_squared = mod_mul(v, v)
       let v_cubed = mod_mul(v_squared, v)
       let w = mod_mul(z1, z2)
-      
-      let x3 = mod_sub(
-        mod_mul(u, u),
-        mod_add(mod_mul(v_squared, mod_add(v2, v1)), v_cubed)
-      )
-      let y3 = mod_sub(
-        mod_mul(u, mod_sub(mod_mul(v, v2), x3)),
-        mod_mul(v_cubed, u2)
-      )
+      let x3 =
+        mod_sub(
+          mod_mul(u, u),
+          mod_add(mod_mul(v_squared, mod_add(v2, v1)), v_cubed),
+        )
+      let y3 =
+        mod_sub(mod_mul(u, mod_sub(mod_mul(v, v2), x3)), mod_mul(v_cubed, u2))
       let z3 = mod_mul(v_cubed, w)
 
       G1Point { x: x3, y: y3, z: z3 }
@@ -570,19 +577,20 @@ pub fn g1_mul(p: G1Point, scalar: Field) -> G1Point {
     // Return point at infinity
     G1Point { x: 0, y: 1, z: 0 }
   } else {
-    // Double-and-add algorithm
-    let result = G1Point { x: 0, y: 1, z: 0 }
-    let temp = p
-    let n = scalar
+    g1_mul_loop(G1Point { x: 0, y: 1, z: 0 }, p, scalar)
+  }
+}
 
-    while n > 0 {
-      if n % 2 == 1 {
-        result = g1_add(result, temp)
+// Double-and-add algorithm - may be able to do this with list.foldl2
+fn g1_mul_loop(result: G1Point, t: G1Point, n: Field) -> G1Point {
+  if n > 0 {
+    when n % 2 is {
+      1 -> {
+        let result = g1_add(result, t)
       }
-      temp = g1_double(temp)
-      n = n / 2
     }
-
+    g1_mul_loop(result, g1_double(t), n / 2)
+  } else {
     result
   }
 }
@@ -597,15 +605,12 @@ pub fn is_on_curve_g1(p: G1Point) -> Bool {
       Some(z_inv_val) -> {
         let z_inv_squared = mod_mul(z_inv_val, z_inv_val)
         let z_inv_cubed = mod_mul(z_inv_squared, z_inv_val)
-        
         let x_affine = mod_mul(p.x, z_inv_squared)
         let y_affine = mod_mul(p.y, z_inv_cubed)
-        
         // Check y^2 = x^3 + 4
         let y_squared = mod_mul(y_affine, y_affine)
         let x_cubed = mod_mul(mod_mul(x_affine, x_affine), x_affine)
         let rhs = mod_add(x_cubed, 4)
-        
         y_squared == rhs
       }
       None -> False
@@ -654,22 +659,22 @@ pub fn g2_add(p1: G2Point, p2: G2Point) -> G2Point {
       let (u_1, u_2) = fp2_sub((u1_1, u1_2), (u2_1, u2_2))
       let (v_1, v_2) = fp2_sub((v1_1, v1_2), (v2_1, v2_2))
       let (v_squared_1, v_squared_2) = fp2_square((v_1, v_2))
-      let (v_cubed_1, v_cubed_2) = fp2_mul((v_1, v_2), (v_squared_1, v_squared_2))
+      let (v_cubed_1, v_cubed_2) =
+        fp2_mul((v_1, v_2), (v_squared_1, v_squared_2))
       let (w_1, w_2) = fp2_mul((z1_1, z1_2), (z2_1, z2_2))
 
       let (temp1_1, temp1_2) = fp2_add((v2_1, v2_2), (v1_1, v1_2))
-      let (temp2_1, temp2_2) = fp2_mul((v_squared_1, v_squared_2), (temp1_1, temp1_2))
-      let (temp3_1, temp3_2) = fp2_add((temp2_1, temp2_2), (v_cubed_1, v_cubed_2))
-      
-      let (x3_1, x3_2) = fp2_sub(
-        fp2_square((u_1, u_2)),
-        (temp3_1, temp3_2)
-      )
+      let (temp2_1, temp2_2) =
+        fp2_mul((v_squared_1, v_squared_2), (temp1_1, temp1_2))
+      let (temp3_1, temp3_2) =
+        fp2_add((temp2_1, temp2_2), (v_cubed_1, v_cubed_2))
+      let (x3_1, x3_2) = fp2_sub(fp2_square((u_1, u_2)), (temp3_1, temp3_2))
 
-      let (y3_1, y3_2) = fp2_sub(
-        fp2_mul((u_1, u_2), fp2_sub((v_1, v_2), (x3_1, x3_2))),
-        fp2_mul((v_cubed_1, v_cubed_2), (u2_1, u2_2))
-      )
+      let (y3_1, y3_2) =
+        fp2_sub(
+          fp2_mul((u_1, u_2), fp2_sub((v_1, v_2), (x3_1, x3_2))),
+          fp2_mul((v_cubed_1, v_cubed_2), (u2_1, u2_2)),
+        )
 
       let (z3_1, z3_2) = fp2_mul((v_cubed_1, v_cubed_2), (w_1, w_2))
 
@@ -698,11 +703,11 @@ fn g2_double(p: G2Point) -> G2Point {
     let (f_1, f_2) = fp2_square((e_1, e_2))
 
     let (x3_1, x3_2) = fp2_sub((f_1, f_2), fp2_add((d_1, d_2), (d_1, d_2)))
-    
-    let (y3_1, y3_2) = fp2_sub(
-      fp2_mul((e_1, e_2), fp2_sub((d_1, d_2), (x3_1, x3_2))),
-      fp2_mul((8, 0), (c_1, c_2))
-    )
+    let (y3_1, y3_2) =
+      fp2_sub(
+        fp2_mul((e_1, e_2), fp2_sub((d_1, d_2), (x3_1, x3_2))),
+        fp2_mul((8, 0), (c_1, c_2)),
+      )
 
     let (z3_1, z3_2) = fp2_mul((2, 0), fp2_mul((y_1, y_2), (z_1, z_2)))
 
@@ -711,23 +716,24 @@ fn g2_double(p: G2Point) -> G2Point {
 }
 
 pub fn g2_mul(p: G2Point, scalar: Field) -> G2Point {
-  if scalar == 0 || is_infinity_g2(p) {
+  if scalar == 0 || is_infinity(p) {
     // Return point at infinity
     G2Point { x: (0, 0), y: (1, 0), z: (0, 0) }
   } else {
-    // Double-and-add algorithm for G2
-    let result = G2Point { x: (0, 0), y: (1, 0), z: (0, 0) }
-    let temp = p
-    let n = scalar
+    g1_mul_loop(G2Point { x: (0, 0), y: (1, 0), z: (0, 0) }, p, scalar)
+  }
+}
 
-    while n > 0 {
-      if n % 2 == 1 {
-        result = g2_add(result, temp)
+// Double-and-add algorithm - may be able to do this with list.foldl2
+fn g2_mul_loop(result: G2Point, t: G2Point, n: Field) -> G2Point {
+  if n > 0 {
+    when n % 2 is {
+      1 -> {
+        let result = g2_add(result, t)
       }
-      temp = g2_double(temp)
-      n = n / 2
     }
-
+    g2_mul_loop(result, g2_double(t), n / 2)
+  } else {
     result
   }
 }
@@ -739,22 +745,18 @@ fn is_infinity_g2(p: G2Point) -> Bool {
 
 // Extension field arithmetic helpers
 fn fp2_add(a: (Field, Field), b: (Field, Field)) -> (Field, Field) {
-  (mod_add(a.0, b.0), mod_add(a.1, b.1))
+  (mod_add(a.1st, b.1st), mod_add(a.2nd, b.2nd))
 }
 
 fn fp2_sub(a: (Field, Field), b: (Field, Field)) -> (Field, Field) {
-  (mod_sub(a.0, b.0), mod_sub(a.1, b.1))
+  (mod_sub(a.1st, b.1st), mod_sub(a.2nd, b.2nd))
 }
 
 fn fp2_mul(a: (Field, Field), b: (Field, Field)) -> (Field, Field) {
-  let a0b0 = mod_mul(a.0, b.0)
-  let a1b1 = mod_mul(a.1, b.1)
-  let a0b1_plus_a1b0 = mod_mul(mod_add(a.0, a.1), mod_add(b.0, b.1))
-  
-  (
-    mod_sub(a0b0, a1b1),
-    mod_sub(a0b1_plus_a1b0, mod_add(a0b0, a1b1))
-  )
+  let a0b0 = mod_mul(a.1st, b.1st)
+  let a1b1 = mod_mul(a.2nd, b.2nd)
+  let a0b1_plus_a1b0 = mod_mul(mod_add(a.1st, a.2nd), mod_add(b.1st, b.2nd))
+  (mod_sub(a0b0, a1b1), mod_sub(a0b1_plus_a1b0, mod_add(a0b0, a1b1)))
 }
 
 fn fp2_square(a: (Field, Field)) -> (Field, Field) {
@@ -762,7 +764,7 @@ fn fp2_square(a: (Field, Field)) -> (Field, Field) {
 }
 
 fn fp2_eq(a: (Field, Field), b: (Field, Field)) -> Bool {
-  a.0 == b.0 && a.1 == b.1
+  a.1st == b.1st && a.2nd == b.2nd
 }
 
 pub fn is_on_curve_g2(p: G2Point) -> Bool {
@@ -772,21 +774,22 @@ pub fn is_on_curve_g2(p: G2Point) -> Bool {
     // Convert to affine coordinates
     let (z1, z2) = p.z
     let z_inv = mod_inv(z1, bls12_381_prime)
-    
     when z_inv is {
       Some(z_inv_val) -> {
         let z_inv_squared = fp2_square((z_inv_val, z2))
         let z_inv_cubed = fp2_mul((z_inv_val, z2), z_inv_squared)
-        
         let (x_affine_1, x_affine_2) = fp2_mul(p.x, z_inv_squared)
         let (y_affine_1, y_affine_2) = fp2_mul(p.y, z_inv_cubed)
-        
         // Check y^2 = x^3 + 4(1 + i)
         let y_squared = fp2_square((y_affine_1, y_affine_2))
-        let x_cubed = fp2_mul(fp2_square((x_affine_1, x_affine_2)), (x_affine_1, x_affine_2))
-        let b2 = (4, 4) // 4(1 + i) is the B coefficient for G2
+        let x_cubed =
+          fp2_mul(
+            fp2_square((x_affine_1, x_affine_2)),
+            (x_affine_1, x_affine_2),
+          )
+        let b2 = (4, 4)
+        // 4(1 + i) is the B coefficient for G2
         let rhs = fp2_add(x_cubed, b2)
-        
         fp2_eq(y_squared, rhs)
       }
       None -> False
@@ -810,13 +813,15 @@ pub fn pairing_check(g1_points: List<G1Point>, g2_points: List<G2Point>) -> Bool
   } else {
     // Compute \prod e(P_i, Q_i) = 1
     let pairs = list.zip(g1_points, g2_points)
-    let acc = #"010000000000000000000000000000000000000000000000000000000000000000"
-    
-    for (p1, p2) in pairs {
-      let ml = miller_loop(p1, p2)
-      acc = combine_miller_loop_results(acc, ml)
-    }
-    
+    let acc =
+      #"010000000000000000000000000000000000000000000000000000000000000000"
+    list.foldr(
+      pairs,
+      acc,
+      fn(pair, acc) {
+        combine_miller_loop_results(acc, miller_loop(pair.1st, pair.2nd))
+      },
+    )
     let final_result = final_exponentiation(acc)
     is_one(final_result)
   }
