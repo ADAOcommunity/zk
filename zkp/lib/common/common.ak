@@ -459,9 +459,8 @@ pub fn deserialize_field(bytes: ByteArray) -> Option<Field> {
 pub fn hash_to_field(data: ByteArray) -> Field {
   // Hash the input data and reduce it modulo the field characteristic
   let hash = crypto.blake2b_256(data)
-  let bytes = bytearray.to_list(hash)
-  list.foldl(
-    byte_list,
+  bytearray.foldl(
+    hash,
     0,
     fn(result, byte) { ( result * 256 + byte ) % bls12_381_prime },
   )
@@ -490,7 +489,7 @@ pub fn hash_to_curve(data: ByteArray) -> G1Point {
             } else {
               mod_neg(y)
             }
-          G1Point { x, y: final_y, z: 1 }
+          Point { x, y: final_y, z: 1 }
         }
         None -> g1_generator()
       }
@@ -523,7 +522,7 @@ pub fn g1_add(p1: G1Point, p2: G1Point) -> G1Point {
     if v1 == v2 {
       if u1 != u2 {
         // Return point at infinity
-        G1Point { x: 0, y: 1, z: 0 }
+        Point { x: 0, y: 1, z: 0 }
       } else {
         // Point doubling
         g1_double(p1)
@@ -543,7 +542,7 @@ pub fn g1_add(p1: G1Point, p2: G1Point) -> G1Point {
         mod_sub(mod_mul(u, mod_sub(mod_mul(v, v2), x3)), mod_mul(v_cubed, u2))
       let z3 = mod_mul(v_cubed, w)
 
-      G1Point { x: x3, y: y3, z: z3 }
+      Point { x: x3, y: y3, z: z3 }
     }
   }
 }
@@ -568,16 +567,16 @@ fn g1_double(p: G1Point) -> G1Point {
     let y3 = mod_sub(mod_mul(e, mod_sub(d, x3)), mod_mul(8, c))
     let z3 = mod_mul(2, mod_mul(y, z))
 
-    G1Point { x: x3, y: y3, z: z3 }
+    Point { x: x3, y: y3, z: z3 }
   }
 }
 
 pub fn g1_mul(p: G1Point, scalar: Field) -> G1Point {
   if scalar == 0 || is_infinity(p) {
     // Return point at infinity
-    G1Point { x: 0, y: 1, z: 0 }
+    Point { x: 0, y: 1, z: 0 }
   } else {
-    g1_mul_loop(G1Point { x: 0, y: 1, z: 0 }, p, scalar)
+    g1_mul_loop(Point { x: 0, y: 1, z: 0 }, p, scalar)
   }
 }
 
