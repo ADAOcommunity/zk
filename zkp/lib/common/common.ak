@@ -582,13 +582,14 @@ pub fn g1_mul(p: G1Point, scalar: Field) -> G1Point {
 
 // Double-and-add algorithm - may be able to do this with list.foldl2
 fn g1_mul_loop(result: G1Point, t: G1Point, n: Field) -> G1Point {
+  let result = g1_add(result, t)
   if n > 0 {
     when n % 2 is {
       1 -> {
-        let result = g1_add(result, t)
+        result
       }
+      _ -> g1_mul_loop(result, g1_double(t), n / 2)
     }
-    g1_mul_loop(result, g1_double(t), n / 2)
   } else {
     result
   }
@@ -715,23 +716,24 @@ fn g2_double(p: G2Point) -> G2Point {
 }
 
 pub fn g2_mul(p: G2Point, scalar: Field) -> G2Point {
-  if scalar == 0 || is_infinity(p) {
+  if scalar == 0 || is_infinity_g2(p) {
     // Return point at infinity
     G2Point { x: (0, 0), y: (1, 0), z: (0, 0) }
   } else {
-    g1_mul_loop(G2Point { x: (0, 0), y: (1, 0), z: (0, 0) }, p, scalar)
+    g2_mul_loop(G2Point { x: (0, 0), y: (1, 0), z: (0, 0) }, p, scalar)
   }
 }
 
 // Double-and-add algorithm - may be able to do this with list.foldl2
 fn g2_mul_loop(result: G2Point, t: G2Point, n: Field) -> G2Point {
+  let result = g2_add(result, t)
   if n > 0 {
     when n % 2 is {
       1 -> {
-        let result = g2_add(result, t)
+        result
       }
+      _ -> g2_mul_loop(result, g2_double(t), n / 2)
     }
-    g2_mul_loop(result, g2_double(t), n / 2)
   } else {
     result
   }
