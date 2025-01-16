@@ -816,7 +816,7 @@ pub fn pairing_check(g1_points: List<G1Point>, g2_points: List<G2Point>) -> Bool
     let pairs = list.zip(g1_points, g2_points)
     let acc =
       #"010000000000000000000000000000000000000000000000000000000000000000"
-    list.foldr(
+    let acc = list.foldr(
       pairs,
       acc,
       fn(pair, acc) {
