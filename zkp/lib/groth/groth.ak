@@ -1,5 +1,5 @@
 use aiken/builtin
-use aiken/bytearray
+use aiken/primitive/bytearray
 use aiken/crypto
 use common/common
 
@@ -26,12 +26,17 @@ pub type GrothError {
   InvalidPublicInput
 }
 
+pub type BoolOrGrothError {
+  BGB(Bool)
+  BGG(GrothError)
+}
+
 // Main verification function
 pub fn verify(
   vk: GrothVerificationKey,
   proof: GrothProof,
   public_inputs: List<common.Field>,
-) -> Result<Bool, GrothError> {
+) -> BoolOrGrothError {
   // Verify sizes match
   verify_sizes(vk, public_inputs)?
   
@@ -58,7 +63,7 @@ pub fn verify(
 }
 
 // Helper function for pairing computation
-fn pairing(g1: common.G1Point, g2: common.G2Point) -> builtin.MillerLoopResult {
+fn pairing(g1: common.G1Point, g2: common.G2Point) {
   builtin.bls12_381_miller_loop(
     builtin.bls12_381_g1_uncompress(g1),
     builtin.bls12_381_g2_uncompress(g2),

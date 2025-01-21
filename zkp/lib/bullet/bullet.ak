@@ -260,7 +260,8 @@ pub fn verify_power_of_two(n: Int) -> Bool {
     // A number is a power of 2 if it has exactly one bit set
     // n & (n - 1) will clear the rightmost set bit
     // If result is 0, n was a power of 2
-    (n && (n - 1)) == 0
+    // (n && (n - 1)) == 0
+    todo
   }
 }
 

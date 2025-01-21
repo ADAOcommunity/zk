@@ -36,6 +36,19 @@ pub type PlonkProof {
   eval_z_omega: common.Field,
 }
 
+pub type BoolOrPlonkError {
+  BPB(Bool)
+  BPP(PlonkError)
+}
+pub type BoolOrVerificationError {
+  BVB(Bool)
+  BVV(common.VerificationError)
+}
+pub type G1PointOrPlonkError {
+  G(common.G1Point)
+  P(PlonkError)
+}
+
 pub type PlonkError {
   InvalidProofFormat
   InvalidVerificationKey
@@ -68,7 +81,7 @@ pub fn verify(
   vk: PlonkVerificationKey,
   proof: PlonkProof,
   public_inputs: List<common.Field>,
-) -> Result<Bool, PlonkError> {
+) -> BoolOrPlonkError {
   // 1. Compute challenges from the transcript
   let challenges = compute_challenges(vk, proof, public_inputs)
 
@@ -100,7 +113,7 @@ pub fn verify(
 fn verify_polynomial_commitments(
   vk: PlonkVerificationKey,
   proof: PlonkProof,
-) -> Result<Bool, PlonkError> {
+) -> BoolOrPlonkError {
   // 1. Verify proof elements are valid G1 points
   when common.validate_g1_point(proof.a) is {
     Error(_) -> Error(InvalidProofFormat)
@@ -135,7 +148,7 @@ fn compute_linearization_polynomial(
   proof: PlonkProof,
   challenge_beta: common.Field,
   challenge_gamma: common.Field,
-) -> Result<common.G1Point, PlonkError> {
+) -> G1PointOrPlonkError {
   // 1. Compute quotient terms
   let q_m = common.field_mul(proof.eval_a, proof.eval_b)
   let q_l = proof.eval_a
@@ -164,7 +177,7 @@ fn compute_linearization_polynomial(
 fn verify_permutation_argument(
   vk: PlonkVerificationKey,
   proof: PlonkProof,
-) -> Result<Bool, PlonkError> {
+) -> BoolOrPlonkError {
   // 1. Verify sigma commitments are valid G1 points
   when common.validate_g1_point(vk.s1) is {
     Error(_) -> Error(InvalidVerificationKey)
@@ -302,7 +315,7 @@ fn verify_poly_commitments(
   vk: PlonkVerificationKey,
   proof: PlonkProof,
   challenges: PlonkChallenges,
-) -> Result<Bool, common.VerificationError> {
+) -> BoolOrPlonkError {
   // 1. Verify that proof elements are valid G1 points
   when common.validate_g1_point(proof.a) is {
     Error(_) -> Error(common.InvalidG1Point)
@@ -359,7 +372,7 @@ fn verify_batch_opening(
   proof: PlonkProof,
   challenges: PlonkChallenges,
   pi: common.Field,
-) -> Result<Bool, common.VerificationError> {
+) -> BoolOrVerificationError {
   // 1. Compute opening challenge
   let u = challenges.u
   
