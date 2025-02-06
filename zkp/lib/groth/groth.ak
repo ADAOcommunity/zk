@@ -1,6 +1,7 @@
 use aiken/builtin
-use aiken/primitive/bytearray
+use aiken/collection/list
 use aiken/crypto
+use aiken/primitive/bytearray
 use common/common
 
 // Groth16 specific types
@@ -26,6 +27,11 @@ pub type GrothError {
   InvalidPublicInput
 }
 
+pub type G1PointOrGrothError {
+  PGP(common.G1Point)
+  PGG(GrothError)
+}
+
 pub type BoolOrGrothError {
   BGB(Bool)
   BGG(GrothError)
@@ -38,14 +44,25 @@ pub fn verify(
   public_inputs: List<common.Field>,
 ) -> BoolOrGrothError {
   // Verify sizes match
-  verify_sizes(vk, public_inputs)?
-  
+  let _correct_size =
+    when verify_sizes(vk, public_inputs) is {
+      Some(err) -> {
+        trace BGG(err)
+        fail
+      }
+      None -> True
+    }
   // Verify proof elements are valid
-  verify_proof_elements(proof)?
-  
+  let _valid_elemens =
+    when verify_proof_elements(proof) is {
+      Some(err) -> {
+        trace BGG(err)
+        fail
+      }
+      None -> True
+    }
   // Prepare inputs (negate first element)
   let prepared_inputs = prepare_inputs(public_inputs)
-  
   // Compute the linear combination of inputs with IC
   let vk_x = compute_linear_combination(vk.vk_ic, prepared_inputs)?
 
@@ -58,8 +75,7 @@ pub fn verify(
   // Final verification
   let mlr1 = builtin.bls12_381_mul_miller_loop_result(e_alpha_beta, e_vk_gamma)
   let mlr2 = builtin.bls12_381_mul_miller_loop_result(mlr1, e_c_delta)
-  
-  Ok(builtin.bls12_381_final_verify(e_ab, mlr2))
+  builtin.bls12_381_final_verify(e_ab, mlr2)
 }
 
 // Helper function for pairing computation
@@ -74,12 +90,12 @@ fn pairing(g1: common.G1Point, g2: common.G2Point) {
 fn compute_linear_combination(
   ic: List<common.G1Point>,
   inputs: List<common.Field>,
-) -> Result<common.G1Point, GrothError> {
+) -> G1PointOrGrothError {
   when ic is {
-    [] -> Error(InvalidVerificationKey)
+    [] -> PGG(InvalidVerificationKey)
     [vk_0, ..rest] -> {
       let init = builtin.bls12_381_g1_uncompress(vk_0)
-      Ok(combine_inputs(rest, inputs, init))
+      PGP(combine_inputs(rest, inputs, init))
     }
   }
 }
@@ -92,10 +108,11 @@ fn combine_inputs(
   when (ic, inputs) is {
     ([], _) | (_, []) -> acc
     ([vk_i, ..rest_ic], [input, ..rest_inputs]) -> {
-      let term = builtin.bls12_381_g1_scalar_mul(
-        input,
-        builtin.bls12_381_g1_uncompress(vk_i),
-      )
+      let term =
+        builtin.bls12_381_g1_scalar_mul(
+          input,
+          builtin.bls12_381_g1_uncompress(vk_i),
+        )
       let new_acc = builtin.bls12_381_g1_add(acc, term)
       combine_inputs(rest_ic, rest_inputs, new_acc)
     }
@@ -113,18 +130,16 @@ fn negate_field(x: common.Field) -> common.Field {
 fn verify_sizes(
   vk: GrothVerificationKey,
   public_inputs: List<common.Field>,
-) -> Result<Void, GrothError> {
-  if builtin.length(public_inputs) != vk.n_public {
-    Error(InvalidPublicInput)
+) -> Option<GrothError> {
+  if list.length(public_inputs) != vk.n_public {
+    Some(InvalidPublicInput)
   } else {
-    Ok(void)
+    None
   }
 }
 
 // Helper function to prepare public inputs for verification
-fn prepare_inputs(
-  inputs: List<common.Field>,
-) -> List<common.Field> {
+fn prepare_inputs(inputs: List<common.Field>) -> List<common.Field> {
   // The first element should be negated as per the protocol
   when inputs is {
     [] -> []
@@ -133,14 +148,14 @@ fn prepare_inputs(
 }
 
 // Helper function to verify proof elements are valid curve points
-fn verify_proof_elements(proof: GrothProof) -> Result<Void, GrothError> {
+fn verify_proof_elements(proof: GrothProof) -> Option<GrothError> {
   let valid_a = builtin.bls12_381_g1_validate(proof.pi_a)
   let valid_b = builtin.bls12_381_g2_validate(proof.pi_b)
   let valid_c = builtin.bls12_381_g1_validate(proof.pi_c)
 
   if valid_a && valid_b && valid_c {
-    Ok(void)
+    None
   } else {
-    Error(InvalidProofFormat)
+    Some(Error(InvalidProofFormat))
   }
 }

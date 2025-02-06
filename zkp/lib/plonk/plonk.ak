@@ -1,15 +1,21 @@
-use aiken/primitive/bytearray
 use aiken/crypto
+use aiken/primitive/bytearray
 use common/common
 
 // PLONK specific types
 pub type PlonkVerificationKey {
-  n: Int,  // Size of the circuit
-  q_m: List<common.Field>,  // Multiplication selector polynomial
-  q_l: List<common.Field>,  // Left selector polynomial
-  q_r: List<common.Field>,  // Right selector polynomial
-  q_o: List<common.Field>,  // Output selector polynomial
-  q_c: List<common.Field>,  // Constants selector polynomial
+  n: Int,
+  // Size of the circuit
+  q_m: List<common.Field>,
+  // Multiplication selector polynomial
+  q_l: List<common.Field>,
+  // Left selector polynomial
+  q_r: List<common.Field>,
+  // Right selector polynomial
+  q_o: List<common.Field>,
+  // Output selector polynomial
+  q_c: List<common.Field>,
+  // Constants selector polynomial
   sigma1: List<common.Field>,
   sigma2: List<common.Field>,
   sigma3: List<common.Field>,
@@ -40,10 +46,12 @@ pub type BoolOrPlonkError {
   BPB(Bool)
   BPP(PlonkError)
 }
+
 pub type BoolOrVerificationError {
   BVB(Bool)
   BVV(common.VerificationError)
 }
+
 pub type G1PointOrPlonkError {
   G(common.G1Point)
   P(PlonkError)
@@ -125,17 +133,11 @@ fn verify_polynomial_commitments(
             Error(_) -> Error(InvalidProofFormat)
             Ok(_) -> {
               // 2. Verify commitment to quotient polynomial
-              let t_commitment = common.g1_add(
-                proof.t1,
-                common.g1_add(proof.t2, proof.t3)
-              )
-              
+              let t_commitment =
+                common.g1_add(proof.t1, common.g1_add(proof.t2, proof.t3))
               // 3. Verify commitment to permutation polynomial
-              let sigma_commitment = common.g1_add(
-                vk.s1,
-                common.g1_add(vk.s2, vk.s3)
-              )
-              
+              let sigma_commitment =
+                common.g1_add(vk.s1, common.g1_add(vk.s2, vk.s3))
               Ok(common.g1_equal(sigma_commitment, proof.z))
             }
           }
@@ -154,24 +156,22 @@ fn compute_linearization_polynomial(
   let q_l = proof.eval_a
   let q_r = proof.eval_b
   let q_o = proof.eval_c
-  
   // 2. Compute permutation terms
-  let perm1 = common.field_mul(
-    proof.eval_a + challenge_beta * proof.eval_s1 + challenge_gamma,
-    proof.eval_b + challenge_beta * proof.eval_s2 + challenge_gamma
-  )
-  
-  // 3. Combine into linearization polynomial
-  Ok(common.g1_add(
-    common.g1_mul(vk.s1, q_m),
-    common.g1_add(
-      common.g1_mul(vk.s2, q_l),
-      common.g1_add(
-        common.g1_mul(vk.s3, q_r),
-        common.g1_mul(vk.s1, perm1)
-      )
+  let perm1 =
+    common.field_mul(
+      proof.eval_a + challenge_beta * proof.eval_s1 + challenge_gamma,
+      proof.eval_b + challenge_beta * proof.eval_s2 + challenge_gamma,
     )
-  ))
+  // 3. Combine into linearization polynomial
+  Ok(
+    common.g1_add(
+      common.g1_mul(vk.s1, q_m),
+      common.g1_add(
+        common.g1_mul(vk.s2, q_l),
+        common.g1_add(common.g1_mul(vk.s3, q_r), common.g1_mul(vk.s1, perm1)),
+      ),
+    ),
+  )
 }
 
 fn verify_permutation_argument(
@@ -189,23 +189,23 @@ fn verify_permutation_argument(
             Error(_) -> Error(InvalidVerificationKey)
             Ok(_) -> {
               // 2. Verify permutation commitment
-              let perm_valid = common.g1_equal(
-                common.g1_add(vk.s1, common.g1_add(vk.s2, vk.s3)),
-                proof.z
-              )
-              
+              let perm_valid =
+                common.g1_equal(
+                  common.g1_add(vk.s1, common.g1_add(vk.s2, vk.s3)),
+                  proof.z,
+                )
               // 3. Verify permutation evaluation
-              let eval_valid = common.field_equal(
-                common.field_mul(
-                  proof.eval_z_omega,
-                  common.field_add(
-                    proof.eval_s1,
-                    common.field_add(proof.eval_s2, common.field_one())
-                  )
-                ),
-                common.field_one()
-              )
-              
+              let eval_valid =
+                common.field_equal(
+                  common.field_mul(
+                    proof.eval_z_omega,
+                    common.field_add(
+                      proof.eval_s1,
+                      common.field_add(proof.eval_s2, common.field_one()),
+                    ),
+                  ),
+                  common.field_one(),
+                )
               Ok(perm_valid && eval_valid)
             }
           }
@@ -222,53 +222,49 @@ fn compute_challenges(
   public_inputs: List<common.Field>,
 ) -> PlonkChallenges {
   // Generate transcript for Fiat-Shamir
-  let ts1 = bytearray.concat(
-    proof.a.to_bytes(),
-    bytearray.concat(proof.b.to_bytes(), proof.c.to_bytes()),
-  )
+  let ts1 =
+    bytearray.concat(
+      common.g1_compress(proof.a),
+      bytearray.concat(common.g1_compress(proof.b), common.g1_compress(proof.c)),
+    )
 
   // Compute beta and gamma challenges
   let ts2 = ts1
-  let beta = common.Field { 
-    value: bytearray.to_int(generate_transcript(bytearray.concat(ts2, #[1]))) 
-  }
-  let gamma = common.Field {
-    value: bytearray.to_int(generate_transcript(bytearray.concat(ts2, #[2])))
-  }
+  let beta: common.Field =
+    bytearray.to_int_big_endian(
+      generate_transcript(bytearray.concat(ts2, #[1])),
+    )
+  let gamma: common.Field =
+    bytearray.to_int_big_endian(
+      generate_transcript(bytearray.concat(ts2, #[2])),
+    )
 
   // Compute alpha challenge
-  let ts3 = bytearray.concat(ts2, proof.z.to_bytes())
-  let alpha = common.Field {
-    value: bytearray.to_int(generate_transcript(ts3))
-  }
+  let ts3 = bytearray.concat(ts2, common.g1_compress(proof.z))
+  let alpha: common.Field =
+    bytearray.to_int_big_endian(generate_transcript(ts3))
 
   // Compute zeta challenge
-  let ts4 = bytearray.concat(ts3, 
-    bytearray.concat(proof.t1.to_bytes(),
-      bytearray.concat(proof.t2.to_bytes(), proof.t3.to_bytes())
+  let ts4 =
+    bytearray.concat(
+      ts3,
+      bytearray.concat(
+        common.g1_compress(proof.t1),
+        bytearray.concat(
+          common.g1_compress(proof.t2),
+          common.g1_compress(proof.t3),
+        ),
+      ),
     )
-  )
-  let zeta = common.Field {
-    value: bytearray.to_int(generate_transcript(ts4))
-  }
+  let zeta: common.Field = bytearray.to_int_big_endian(generate_transcript(ts4))
 
   // Compute v and u challenges
-  let ts5 = bytearray.concat(ts4, proof.eval_a.to_bytes())
-  let v = common.Field {
-    value: bytearray.to_int(generate_transcript(ts5))
-  }
-  let u = common.Field {
-    value: bytearray.to_int(generate_transcript(bytearray.concat(ts5, #[1])))
-  }
+  let ts5 = bytearray.concat(ts4, common.serialize_field(proof.eval_a))
+  let v: common.Field = bytearray.to_int(generate_transcript(ts5))
+  let u: common.Field =
+    bytearray.to_int(generate_transcript(bytearray.concat(ts5, #[1])))
 
-  PlonkChallenges {
-    beta,
-    gamma,
-    alpha,
-    zeta,
-    v,
-    u,
-  }
+  PlonkChallenges { beta, gamma, alpha, zeta, v, u }
 }
 
 /// Compute the linearization polynomial
@@ -278,36 +274,36 @@ fn compute_linearization(
   challenges: PlonkChallenges,
 ) -> common.G1Point {
   // 1. Compute quotient terms
-  let l1 = common.field_mul(
-    challenges.alpha,
-    common.field_add(
-      common.field_mul(proof.eval_a, proof.eval_b),
-      common.field_mul(proof.eval_c, challenges.gamma)
+  let l1 =
+    common.field_mul(
+      challenges.alpha,
+      common.field_add(
+        common.field_mul(proof.eval_a, proof.eval_b),
+        common.field_mul(proof.eval_c, challenges.gamma),
+      ),
     )
-  )
 
   // 2. Compute permutation terms
-  let z_h = common.field_sub(
-    common.field_mul(challenges.zeta, challenges.zeta),
-    common.field_one()
-  )
-
-  let perm = common.field_mul(
-    proof.eval_z_omega,
-    common.field_add(
-      common.field_add(
-        common.field_mul(proof.eval_a, challenges.beta),
-        common.field_mul(proof.eval_s1, challenges.gamma)
-      ),
-      common.field_one()
+  let z_h =
+    common.field_sub(
+      common.field_mul(challenges.zeta, challenges.zeta),
+      common.field_one(),
     )
-  )
+
+  let perm =
+    common.field_mul(
+      proof.eval_z_omega,
+      common.field_add(
+        common.field_add(
+          common.field_mul(proof.eval_a, challenges.beta),
+          common.field_mul(proof.eval_s1, challenges.gamma),
+        ),
+        common.field_one(),
+      ),
+    )
 
   // 3. Combine into final linearization polynomial
-  common.g1_add(
-    common.g1_mul(vk.s1, l1),
-    common.g1_mul(vk.s2, perm)
-  )
+  common.g1_add(common.g1_mul(vk.s1, l1), common.g1_mul(vk.s2, perm))
 }
 
 /// Verify polynomial commitments
@@ -328,16 +324,24 @@ fn verify_poly_commitments(
             Ok(_) -> {
               // 2. Compute linearization polynomial
               let r = compute_linearization(vk, proof, challenges)
-              
               // 3. Verify commitment to linearization polynomial
-              let t_commitment = common.g1_add(
-                common.g1_mul(proof.t1, challenges.zeta),
+              let t_commitment =
                 common.g1_add(
-                  common.g1_mul(proof.t2, common.field_mul(challenges.zeta, challenges.zeta)),
-                  common.g1_mul(proof.t3, common.field_mul(common.field_mul(challenges.zeta, challenges.zeta), challenges.zeta))
+                  common.g1_mul(proof.t1, challenges.zeta),
+                  common.g1_add(
+                    common.g1_mul(
+                      proof.t2,
+                      common.field_mul(challenges.zeta, challenges.zeta),
+                    ),
+                    common.g1_mul(
+                      proof.t3,
+                      common.field_mul(
+                        common.field_mul(challenges.zeta, challenges.zeta),
+                        challenges.zeta,
+                      ),
+                    ),
+                  ),
                 )
-              )
-              
               Ok(common.g1_equal(r, t_commitment))
             }
           }
@@ -354,13 +358,14 @@ fn compute_pi(
   when public_inputs is {
     [] -> common.field_zero()
     [input, ..rest] -> {
-      let l1_zeta = common.field_sub(
-        common.field_one(),
-        common.field_mul(challenges.zeta, challenges.zeta)
-      )
+      let l1_zeta =
+        common.field_sub(
+          common.field_one(),
+          common.field_mul(challenges.zeta, challenges.zeta),
+        )
       common.field_add(
         common.field_mul(input, l1_zeta),
-        compute_pi(rest, challenges)
+        compute_pi(rest, challenges),
       )
     }
   }
@@ -375,36 +380,49 @@ fn verify_batch_opening(
 ) -> BoolOrVerificationError {
   // 1. Compute opening challenge
   let u = challenges.u
-  
   // 2. Combine all polynomial evaluations
-  let eval_combined = common.field_add(
+  let eval_combined =
     common.field_add(
-      common.field_mul(proof.eval_a, u),
-      common.field_mul(proof.eval_b, common.field_mul(u, u))
-    ),
-    common.field_add(
-      common.field_mul(proof.eval_c, common.field_mul(common.field_mul(u, u), u)),
-      common.field_mul(proof.eval_s1, common.field_mul(common.field_mul(common.field_mul(u, u), u), u))
+      common.field_add(
+        common.field_mul(proof.eval_a, u),
+        common.field_mul(proof.eval_b, common.field_mul(u, u)),
+      ),
+      common.field_add(
+        common.field_mul(
+          proof.eval_c,
+          common.field_mul(common.field_mul(u, u), u),
+        ),
+        common.field_mul(
+          proof.eval_s1,
+          common.field_mul(common.field_mul(common.field_mul(u, u), u), u),
+        ),
+      ),
     )
-  )
-  
   // 3. Combine all commitments
-  let commit_combined = common.g1_add(
+  let commit_combined =
     common.g1_add(
-      common.g1_mul(proof.a, u),
-      common.g1_mul(proof.b, common.field_mul(u, u))
-    ),
-    common.g1_add(
-      common.g1_mul(proof.c, common.field_mul(common.field_mul(u, u), u)),
-      common.g1_mul(vk.s1, common.field_mul(common.field_mul(common.field_mul(u, u), u), u))
+      common.g1_add(
+        common.g1_mul(proof.a, u),
+        common.g1_mul(proof.b, common.field_mul(u, u)),
+      ),
+      common.g1_add(
+        common.g1_mul(proof.c, common.field_mul(common.field_mul(u, u), u)),
+        common.g1_mul(
+          vk.s1,
+          common.field_mul(common.field_mul(common.field_mul(u, u), u), u),
+        ),
+      ),
     )
-  )
-  
   // 4. Verify batch opening
-  Ok(common.g1_equal(
-    common.g1_mul(commit_combined, challenges.v),
-    common.g1_mul(common.g1_generator(), common.field_mul(eval_combined, challenges.v))
-  ))
+  Ok(
+    common.g1_equal(
+      common.g1_mul(commit_combined, challenges.v),
+      common.g1_mul(
+        common.g1_generator(),
+        common.field_mul(eval_combined, challenges.v),
+      ),
+    ),
+  )
 }
 
 /// Generate transcript for Fiat-Shamir

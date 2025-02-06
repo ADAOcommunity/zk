@@ -249,7 +249,7 @@ pub fn g2_compress(p: G2Point) -> ByteArray {
       Some(z_inv_val) -> {
         let z_inv_squared = fp2_square((z_inv_val, z2))
         let (x_affine_1, x_affine_2) = fp2_mul(p.x, z_inv_squared)
-        let (y_affine_1, y_affine_2) = fp2_mul(p.y, z_inv_squared)
+        let (y_affine_1, _y_affine_2) = fp2_mul(p.y, z_inv_squared)
         // Compress point by keeping x-coordinate and y's sign
         let x1_bytes = serialize_field(x_affine_1)
         let x2_bytes = serialize_field(x_affine_2)
@@ -585,9 +585,7 @@ fn g1_mul_loop(result: G1Point, t: G1Point, n: Field) -> G1Point {
   let result = g1_add(result, t)
   if n > 0 {
     when n % 2 is {
-      1 -> {
-        result
-      }
+      1 -> result
       _ -> g1_mul_loop(result, g1_double(t), n / 2)
     }
   } else {
@@ -729,9 +727,7 @@ fn g2_mul_loop(result: G2Point, t: G2Point, n: Field) -> G2Point {
   let result = g2_add(result, t)
   if n > 0 {
     when n % 2 is {
-      1 -> {
-        result
-      }
+      1 -> result
       _ -> g2_mul_loop(result, g2_double(t), n / 2)
     }
   } else {
@@ -816,13 +812,14 @@ pub fn pairing_check(g1_points: List<G1Point>, g2_points: List<G2Point>) -> Bool
     let pairs = list.zip(g1_points, g2_points)
     let acc =
       #"010000000000000000000000000000000000000000000000000000000000000000"
-    let acc = list.foldr(
-      pairs,
-      acc,
-      fn(pair, acc) {
-        combine_miller_loop_results(acc, miller_loop(pair.1st, pair.2nd))
-      },
-    )
+    let acc =
+      list.foldr(
+        pairs,
+        acc,
+        fn(pair, acc) {
+          combine_miller_loop_results(acc, miller_loop(pair.1st, pair.2nd))
+        },
+      )
     let final_result = final_exponentiation(acc)
     is_one(final_result)
   }
