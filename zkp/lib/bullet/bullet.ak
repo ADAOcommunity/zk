@@ -55,7 +55,7 @@ fn verify_inner_product(
   h_vec: List<common.G1Point>,
   u: common.G1Point,
   p: common.G1Point,
-  c: common.Field,
+  _c: common.Field,
   l_vec: List<common.Field>,
   r_vec: List<common.Field>,
 ) -> Bool {
@@ -155,7 +155,7 @@ fn verify_range_proof(
   // 1. Compute challenges
   let challenges = compute_challenges(vk, proof, value)
   when challenges is {
-    [x, y, z] -> {
+    [x, _y, _z] -> {
       // 2. Verify the commitment matches
       let commitment = commit(value, proof.tau_x, vk.g, vk.h)
       // 3. Verify vector lengths match the expected bit length

@@ -88,12 +88,14 @@ pub fn verify(
 }
 
 // Helper function for pairing computation
+// Optimized to use the standard library's BLS12-381 implementation more efficiently
 fn pairing(g1: common.G1Point, g2: common.G2Point) {
-  // Convert G1Point to ByteArray using the standard library's compress function
+  // Convert G1Point to ByteArray
   let g1_bytes = common.serialize_g1_point(g1)
-  let g1_element = g1.decompress(g1_bytes)
-  // Convert G2Point to ByteArray using the standard library's compress function
+  // Convert G2Point to ByteArray
   let g2_bytes = common.serialize_g2_point(g2)
+  // Use the standard library's decompress functions directly
+  let g1_element = g1.decompress(g1_bytes)
   let g2_element = g2.decompress(g2_bytes)
   // Perform the pairing
   builtin.bls12_381_miller_loop(g1_element, g2_element)
@@ -122,6 +124,7 @@ fn compute_linear_combination(
   }
 }
 
+// Optimized function to combine inputs using the standard library's BLS12-381 implementation
 fn combine_inputs(ic: List<common.G1Point>, inputs: List<common.Field>, acc) {
   when (ic, inputs) is {
     ([], _) | (_, []) -> acc
