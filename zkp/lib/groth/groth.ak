@@ -1,7 +1,8 @@
 use aiken/builtin
 use aiken/collection/list
-use aiken/crypto
-use aiken/primitive/bytearray
+use aiken/crypto/bls12_381/g1
+use aiken/crypto/bls12_381/g2
+use aiken/crypto/bls12_381/scalar
 use common/common
 
 // Groth16 specific types
@@ -44,7 +45,7 @@ pub fn verify(
   public_inputs: List<common.Field>,
 ) -> BoolOrGrothError {
   // Verify sizes match
-  let _correct_size =
+  expect
     when verify_sizes(vk, public_inputs) is {
       Some(err) -> {
         trace BGG(err)
@@ -53,7 +54,7 @@ pub fn verify(
       None -> True
     }
   // Verify proof elements are valid
-  let _valid_elemens =
+  expect
     when verify_proof_elements(proof) is {
       Some(err) -> {
         trace BGG(err)
@@ -64,26 +65,38 @@ pub fn verify(
   // Prepare inputs (negate first element)
   let prepared_inputs = prepare_inputs(public_inputs)
   // Compute the linear combination of inputs with IC
-  let vk_x = compute_linear_combination(vk.vk_ic, prepared_inputs)?
+  when compute_linear_combination(vk.vk_ic, prepared_inputs) is {
+    PGG(err) -> BGG(err)
+    PGP(vk_x) -> {
+      // Perform pairing checks
+      let e_ab = pairing(proof.pi_a, proof.pi_b)
+      let e_alpha_beta = pairing(vk.vk_alpha_g1, vk.vk_beta_g2)
+      let e_vk_gamma = pairing(vk_x, vk.vk_gamma_g2)
+      let e_c_delta = pairing(proof.pi_c, vk.vk_delta_g2)
 
-  // Perform pairing checks
-  let e_ab = pairing(proof.pi_a, proof.pi_b)
-  let e_alpha_beta = pairing(vk.vk_alpha_g1, vk.vk_beta_g2)
-  let e_vk_gamma = pairing(vk_x, vk.vk_gamma_g2)
-  let e_c_delta = pairing(proof.pi_c, vk.vk_delta_g2)
-
-  // Final verification
-  let mlr1 = builtin.bls12_381_mul_miller_loop_result(e_alpha_beta, e_vk_gamma)
-  let mlr2 = builtin.bls12_381_mul_miller_loop_result(mlr1, e_c_delta)
-  builtin.bls12_381_final_verify(e_ab, mlr2)
+      // Final verification
+      let mlr1 =
+        builtin.bls12_381_mul_miller_loop_result(e_alpha_beta, e_vk_gamma)
+      let mlr2 = builtin.bls12_381_mul_miller_loop_result(mlr1, e_c_delta)
+      if builtin.bls12_381_final_verify(e_ab, mlr2) {
+        BGB(True)
+      } else {
+        BGG(PairingCheckFailed)
+      }
+    }
+  }
 }
 
 // Helper function for pairing computation
 fn pairing(g1: common.G1Point, g2: common.G2Point) {
-  builtin.bls12_381_miller_loop(
-    builtin.bls12_381_g1_uncompress(g1),
-    builtin.bls12_381_g2_uncompress(g2),
-  )
+  // Convert G1Point to ByteArray using the standard library's compress function
+  let g1_bytes = common.serialize_g1_point(g1)
+  let g1_element = g1.decompress(g1_bytes)
+  // Convert G2Point to ByteArray using the standard library's compress function
+  let g2_bytes = common.serialize_g2_point(g2)
+  let g2_element = g2.decompress(g2_bytes)
+  // Perform the pairing
+  builtin.bls12_381_miller_loop(g1_element, g2_element)
 }
 
 // Helper function to compute linear combination
@@ -94,26 +107,38 @@ fn compute_linear_combination(
   when ic is {
     [] -> PGG(InvalidVerificationKey)
     [vk_0, ..rest] -> {
-      let init = builtin.bls12_381_g1_uncompress(vk_0)
-      PGP(combine_inputs(rest, inputs, init))
+      // Convert the first IC element to a G1 element
+      let vk_0_bytes = common.serialize_g1_point(vk_0)
+      let init_element = g1.decompress(vk_0_bytes)
+      // Combine the rest of the inputs
+      let result = combine_inputs(rest, inputs, init_element)
+      // Convert back to our G1Point representation
+      let result_bytes = g1.compress(result)
+      when common.g1_decompress(result_bytes) is {
+        Some(point) -> PGP(point)
+        None -> PGG(InvalidVerificationKey)
+      }
     }
   }
 }
 
-fn combine_inputs(
-  ic: List<common.G1Point>,
-  inputs: List<common.Field>,
-  acc: common.G1Point,
-) -> common.G1Point {
+fn combine_inputs(ic: List<common.G1Point>, inputs: List<common.Field>, acc) {
   when (ic, inputs) is {
     ([], _) | (_, []) -> acc
     ([vk_i, ..rest_ic], [input, ..rest_inputs]) -> {
-      let term =
-        builtin.bls12_381_g1_scalar_mul(
-          input,
-          builtin.bls12_381_g1_uncompress(vk_i),
-        )
-      let new_acc = builtin.bls12_381_g1_add(acc, term)
+      // Convert the IC element to a G1 element
+      let vk_i_bytes = common.serialize_g1_point(vk_i)
+      let vk_i_element = g1.decompress(vk_i_bytes)
+      // Convert Field to Scalar for g1.scale
+      let scalar_input =
+        when scalar.new(input) is {
+          Some(s) -> s
+          None -> scalar.zero
+        }
+      // Multiply by the input and add to accumulator
+      let term = g1.scale(vk_i_element, scalar_input)
+      let new_acc = g1.add(acc, term)
+      // Continue with the rest of the inputs
       combine_inputs(rest_ic, rest_inputs, new_acc)
     }
   }
@@ -121,9 +146,11 @@ fn combine_inputs(
 
 // Helper function to negate a field element
 fn negate_field(x: common.Field) -> common.Field {
-  // In BLS12-381, negation is done by subtracting from the modulus
-  // This is handled by the builtin function
-  builtin.bls12_381_scalar_negate(x)
+  if x == 0 {
+    x
+  } else {
+    common.bls12_381_prime - x
+  }
 }
 
 // Helper function to verify the proof size matches expected public input size
@@ -149,13 +176,31 @@ fn prepare_inputs(inputs: List<common.Field>) -> List<common.Field> {
 
 // Helper function to verify proof elements are valid curve points
 fn verify_proof_elements(proof: GrothProof) -> Option<GrothError> {
-  let valid_a = builtin.bls12_381_g1_validate(proof.pi_a)
-  let valid_b = builtin.bls12_381_g2_validate(proof.pi_b)
-  let valid_c = builtin.bls12_381_g1_validate(proof.pi_c)
+  // Convert G1 points to ByteArray
+  let pi_a_bytes = common.serialize_g1_point(proof.pi_a)
+  let pi_c_bytes = common.serialize_g1_point(proof.pi_c)
+  // Convert G2 point to ByteArray
+  let pi_b_bytes = common.serialize_g2_point(proof.pi_b)
+  // Validate the points
+  let valid_a =
+    when common.g1_decompress(pi_a_bytes) is {
+      Some(_) -> True
+      None -> False
+    }
+  let valid_b =
+    when common.g2_decompress(pi_b_bytes) is {
+      Some(_) -> True
+      None -> False
+    }
+  let valid_c =
+    when common.g1_decompress(pi_c_bytes) is {
+      Some(_) -> True
+      None -> False
+    }
 
   if valid_a && valid_b && valid_c {
     None
   } else {
-    Some(Error(InvalidProofFormat))
+    Some(InvalidProofFormat)
   }
 }
