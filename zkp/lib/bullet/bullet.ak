@@ -55,7 +55,7 @@ fn verify_inner_product(
   h_vec: List<common.G1Point>,
   u: common.G1Point,
   p: common.G1Point,
-  c: common.Field,
+  _c: common.Field,
   l_vec: List<common.Field>,
   r_vec: List<common.Field>,
 ) -> Bool {
@@ -120,22 +120,23 @@ fn compute_challenges(
   let challenge1 =
     proof_transcript
       |> generate_transcript
-      |> common.deserialize_field
-      |> unwrap_field_option
 
   let challenge2 =
     challenge1
       |> generate_transcript
-      |> common.deserialize_field
-      |> unwrap_field_option
 
   let challenge3 =
     challenge2
       |> generate_transcript
-      |> common.deserialize_field
-      |> unwrap_field_option
 
-  [challenge1, challenge2, challenge3]
+  list.map(
+    [challenge1, challenge2, challenge3],
+    fn(x) {
+      x
+        |> common.deserialize_field
+        |> unwrap_field_option
+    },
+  )
 }
 
 fn unwrap_field_option(field: Option<common.Field>) -> common.Field {
@@ -154,7 +155,7 @@ fn verify_range_proof(
   // 1. Compute challenges
   let challenges = compute_challenges(vk, proof, value)
   when challenges is {
-    [x, y, z] -> {
+    [x, _y, _z] -> {
       // 2. Verify the commitment matches
       let commitment = commit(value, proof.tau_x, vk.g, vk.h)
       // 3. Verify vector lengths match the expected bit length
@@ -298,10 +299,19 @@ pub fn verify_power_of_two(n: Int) -> Bool {
     False
   } else {
     // A number is a power of 2 if it has exactly one bit set
-    // n & (n - 1) will clear the rightmost set bit
-    // If result is 0, n was a power of 2
-    // (n && (n - 1)) == 0
-    todo
+    // In Aiken, we can't directly do bitwise operations like n & (n-1)
+    // So we'll use a recursive approach to check if n is a power of 2
+    check_power_of_two(n, 0)
+  }
+}
+
+fn check_power_of_two(n: Int, count: Int) -> Bool {
+  if n == 0 {
+    count == 1
+  } else if n % 2 == 1 {
+    check_power_of_two(n / 2, count + 1)
+  } else {
+    check_power_of_two(n / 2, count)
   }
 }
 

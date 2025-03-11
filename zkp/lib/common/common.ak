@@ -50,6 +50,8 @@ pub type VerificationError {
   PairingCheckFailed
   InvalidCurvePoint
   InvalidFieldElement
+  InvalidG1Point
+  InvalidG2Point
 }
 
 // Common utility functions for field operations
@@ -219,8 +221,10 @@ pub fn g1_decompress(bytes: ByteArray) -> Option<G1Point> {
         let x_squared = mod_mul(x, x)
         let x_cubed = mod_mul(x_squared, x)
         let y_squared = mod_add(x_cubed, 4)
+        // Compute y = sqrt(y^2)
         when mod_sqrt(y_squared) is {
           Some(y) -> {
+            // Choose the correct y value based on sign
             let final_y =
               if is_negative && y > bls12_381_prime / 2 || !is_negative && y <= bls12_381_prime / 2 {
                 y
@@ -435,6 +439,19 @@ pub fn serialize_field(f: Field) -> ByteArray {
   // Serialize a field element to a 32-byte array
   // double check the direction. may want this to be little endian
   bytearray.from_int_big_endian(f, 32)
+}
+
+// Alias for serialize_field to maintain compatibility with existing code
+pub fn field_to_bytes(f: Field) -> ByteArray {
+  serialize_field(f)
+}
+
+// Alias for deserialize_field to maintain compatibility with existing code
+pub fn bytes_to_field(bytes: ByteArray) -> Field {
+  when deserialize_field(bytes) is {
+    Some(f) -> f
+    None -> 0
+  }
 }
 
 pub fn deserialize_field(bytes: ByteArray) -> Option<Field> {
@@ -832,4 +849,123 @@ fn combine_miller_loop_results(a: ByteArray, b: ByteArray) -> ByteArray {
 
 fn is_one(bytes: ByteArray) -> Bool {
   bytes == #"010000000000000000000000000000000000000000000000000000000000000000"
+}
+
+// G1Point serialization/deserialization
+pub fn serialize_g1_point(point: G1Point) -> ByteArray {
+  let Point { x, y, z } = point
+  // Serialize the coordinates
+  let x_bytes = serialize_field(x)
+  let y_bytes = serialize_field(y)
+  let z_bytes = serialize_field(z)
+  // Concatenate them
+  bytearray.concat(x_bytes, bytearray.concat(y_bytes, z_bytes))
+}
+
+pub fn deserialize_g1_point(bytes: ByteArray) -> Option<G1Point> {
+  if bytearray.length(bytes) != 96 {
+    None
+  } else {
+    let x_bytes = bytearray.slice(bytes, 0, 32)
+    let y_bytes = bytearray.slice(bytes, 32, 32)
+    let z_bytes = bytearray.slice(bytes, 64, 32)
+    when
+      (
+        deserialize_field(x_bytes),
+        deserialize_field(y_bytes),
+        deserialize_field(z_bytes),
+      )
+    is {
+      (Some(x), Some(y), Some(z)) -> Some(Point { x, y, z })
+      _ -> None
+    }
+  }
+}
+
+// G2Point serialization/deserialization
+pub fn serialize_g2_point(point: G2Point) -> ByteArray {
+  let G2Point { x: (x1, x2), y: (y1, y2), z: (z1, z2) } = point
+  // Serialize all coordinates
+  let x1_bytes = serialize_field(x1)
+  let x2_bytes = serialize_field(x2)
+  let y1_bytes = serialize_field(y1)
+  let y2_bytes = serialize_field(y2)
+  let z1_bytes = serialize_field(z1)
+  let z2_bytes = serialize_field(z2)
+  // Concatenate them
+  bytearray.concat(
+    bytearray.concat(x1_bytes, x2_bytes),
+    bytearray.concat(
+      bytearray.concat(y1_bytes, y2_bytes),
+      bytearray.concat(z1_bytes, z2_bytes),
+    ),
+  )
+}
+
+pub fn deserialize_g2_point(bytes: ByteArray) -> Option<G2Point> {
+  if bytearray.length(bytes) != 192 {
+    None
+  } else {
+    let x1_bytes = bytearray.slice(bytes, 0, 32)
+    let x2_bytes = bytearray.slice(bytes, 32, 32)
+    let y1_bytes = bytearray.slice(bytes, 64, 32)
+    let y2_bytes = bytearray.slice(bytes, 96, 32)
+    let z1_bytes = bytearray.slice(bytes, 128, 32)
+    let z2_bytes = bytearray.slice(bytes, 160, 32)
+    when
+      (
+        deserialize_field(x1_bytes),
+        deserialize_field(x2_bytes),
+        deserialize_field(y1_bytes),
+        deserialize_field(y2_bytes),
+        deserialize_field(z1_bytes),
+        deserialize_field(z2_bytes),
+      )
+    is {
+      (Some(x1), Some(x2), Some(y1), Some(y2), Some(z1), Some(z2)) ->
+        Some(G2Point { x: (x1, x2), y: (y1, y2), z: (z1, z2) })
+      _ -> None
+    }
+  }
+}
+
+// Field arithmetic functions for compatibility with plonk module
+pub fn field_sub(a: Field, b: Field) -> Field {
+  mod_sub(a, b)
+}
+
+pub fn field_add(a: Field, b: Field) -> Field {
+  mod_add(a, b)
+}
+
+pub fn field_mul(a: Field, b: Field) -> Field {
+  mod_mul(a, b)
+}
+
+pub fn field_one() -> Field {
+  1
+}
+
+// Point validation functions
+pub type ValidationResult {
+  Ok(G1Point)
+  Error(VerificationError)
+}
+
+pub fn validate_g1_point(point: G1Point) -> ValidationResult {
+  if is_on_curve_g1(point) {
+    Ok(point)
+  } else {
+    Error(InvalidG1Point)
+  }
+}
+
+// G1 point operations
+pub fn g1_equal(a: G1Point, b: G1Point) -> Bool {
+  a == b
+}
+
+// Field operations (keeping existing ones and adding more)
+pub fn field_equal(a: Field, b: Field) -> Bool {
+  a == b
 }
