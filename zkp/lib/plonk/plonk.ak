@@ -1,6 +1,5 @@
 use aiken/crypto
 use aiken/crypto/bls12_381/g1
-use aiken/crypto/bls12_381/g2
 use aiken/crypto/bls12_381/scalar
 use aiken/primitive/bytearray
 use common/common
