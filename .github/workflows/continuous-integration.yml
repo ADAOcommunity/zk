@@ -13,7 +13,9 @@ jobs:
       - uses: aiken-lang/setup-aiken@v1
         with:
           version: v1.1.5
-      - run: cd zkp
       - run: aiken fmt --check
+        working-directory: zkp
       - run: aiken check -D
+        working-directory: zkp
       - run: aiken build
+        working-directory: zkp
