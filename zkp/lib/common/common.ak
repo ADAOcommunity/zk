@@ -131,7 +131,7 @@ pub fn mod_sqrt(a: Field) -> Option<Field> {
   }
 }
 
-fn mod_pow(base: Field, exp: Field) -> Field {
+pub fn mod_pow(base: Field, exp: Field) -> Field {
   if exp == 0 {
     1
   } else {
