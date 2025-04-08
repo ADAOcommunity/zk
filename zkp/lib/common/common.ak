@@ -68,6 +68,8 @@ pub fn mod_sub(a: Field, b: Field) -> Field {
   }
 }
 
+// Uses Toom-3 multiplication, which is sufficient for our needs. 
+// In the future we may want to switch to Montgomery multiplication for greater efficiency.
 pub fn mod_mul(a: Field, b: Field) -> Field {
   a * b % bls12_381_prime
 }
@@ -113,6 +115,11 @@ fn extended_gcd(a: Int, b: Int) -> (Int, Int) {
   }
 }
 
+// Legendre symbol calculation - checks if a is a quadratic residue mod p
+pub fn legendre(a: Field, p: Field) -> Int {
+  mod_pow(a, ( p - 1 ) / 2)
+}
+
 pub fn mod_sqrt(a: Field) -> Option<Field> {
   // Tonelli-Shanks algorithm for p ≡ 3 (mod 4)
   // For BLS12-381, we can use the simpler case since p ≡ 3 (mod 4)
@@ -131,25 +138,17 @@ pub fn mod_sqrt(a: Field) -> Option<Field> {
   }
 }
 
+// Recursive Binary Exponentiation Algorithm
 pub fn mod_pow(base: Field, exp: Field) -> Field {
-  if exp == 0 {
+  if exp != 0 {
+    let result = mod_pow(base, exp / 2)
+    if exp % 2 == 1 {
+      mod_mul(mod_mul(result, result), base)
+  } else {
+      mod_mul(result, result)
+    }
+  } else {
     1
-  } else {
-    mod_pow_loop(base, exp, 1)
-  }
-}
-
-fn mod_pow_loop(b, e, result) {
-  // may be able to do this with list.foldl2
-  if e > 0 {
-    let result =
-      when e % 2 is {
-        1 -> mod_mul(result, b)
-        _ -> result
-      }
-    mod_pow_loop(mod_mul(b, b), e / 2, result)
-  } else {
-    result
   }
 }
 
