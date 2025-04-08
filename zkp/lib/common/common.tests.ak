@@ -1,6 +1,29 @@
 use aiken/math.{pow}
 use common/common.{bls12_381_prime, mod_pow, mod_sqrt}
 
+test mod_sqrt_tests() {
+  // low integer tests
+  expect mod_sqrt(0) == Some(0)
+  expect mod_sqrt(1) == Some(1)
+  // expect mod_sqrt(2) == None
+  // expect mod_sqrt(3) == None
+  // // high integer tests (numbers must be quadratic residues mod bls12_381_prime)
+  // expect
+  //   mod_sqrt(
+  //     4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559785,
+  //   ) == None
+  // expect mod_sqrt(
+  //   42565077036120787986239338268016232634398935545293987572094716029493011977419,
+  // ) == Some(
+  //   5243587517512619047944774050818596583769055250052763782260365869993858118,
+  // )
+  // mod_sqrt(
+  //   39326906381344642859585805381139474378267914375395728366952744024953935888387,
+  // ) == Some(
+  //   26217937587563095239723870254092982918845276250263818911301829349969290592255,
+  // )
+}
+
 test mod_pow_tests() {
   // low integer tests
   expect mod_pow(2, 0) == 1

@@ -120,20 +120,72 @@ pub fn legendre(a: Field, p: Field) -> Int {
   mod_pow(a, ( p - 1 ) / 2)
 }
 
+fn ts_factorization(q: Int, s: Int) -> (Int, Int) {
+  if q % 2 == 0 {
+    (q / 2, s + 1)
+  } else {
+    (q, s)
+  }
+}
+
+fn ts_final_loop(b: Int, r: Int, c: Int, t: Int, m: Int) {
+  if ( t - 1 ) % bls12_381_prime == 0 {
+    r
+  } else {
+    let t_squared = mod_mul(t, t)
+    let (t_squared, i) = ts_inner_loop(1, m, t_squared)
+    let b = mod_pow(c, ( m - i - 1 ) / 2)
+    let r = mod_mul(r, b)
+    let c = mod_mul(b, b)
+    let t = mod_mul(t, c)
+    let m = i
+    ts_final_loop(b, r, c, t, m)
+  }
+}
+
+fn ts_inner_loop(i: Int, m: Int, t2: Int) -> (Int, Int) {
+  if i == m {
+    (t2, i)
+  } else {
+    let t2_next = mod_mul(t2, t2)
+    ts_inner_loop(i + 1, m, t2_next)
+  }
+}
+
 pub fn mod_sqrt(a: Field) -> Option<Field> {
   // Tonelli-Shanks algorithm for p ≡ 3 (mod 4)
   // For BLS12-381, we can use the simpler case since p ≡ 3 (mod 4)
   if a == 0 {
     Some(0)
   } else {
-    // For p ≡ 3 (mod 4), sqrt(a) = a^((p+1)/4) if a is a quadratic residue
-    let exp = ( bls12_381_prime + 1 ) / 4
-    let sqrt = mod_pow(a, exp)
-    // Verify the result
-    if mod_mul(sqrt, sqrt) == a {
-      Some(sqrt)
-    } else {
+    if legendre(a, bls12_381_prime) != 1 {
+      trace @"Number is not a quadratic residue under BLS12-381"
       None
+    } else {
+      // Factor p - 1 = q * 2^s
+      let (q, s) = ts_factorization(bls12_381_prime - 1, 0)
+
+      // Find a quadratic non-residue z
+      expect Some(z) =
+        list.find(
+          list.range(2, bls12_381_prime),
+          fn(x) { legendre(x, bls12_381_prime) == bls12_381_prime - 1 },
+        )
+
+      // Prepare Variables
+      let c = mod_pow(z, q)
+      let r = mod_pow(a, ( q + 1 ) / 2)
+      let t = mod_pow(a, q)
+      let m = s
+
+      let sqrt = ts_final_loop(0, r, c, t, m)
+
+      // Verify the result
+      if mod_pow(sqrt, 2) == a {
+        Some(sqrt)
+      } else {
+        None
+      }
     }
   }
 }
@@ -144,7 +196,7 @@ pub fn mod_pow(base: Field, exp: Field) -> Field {
     let result = mod_pow(base, exp / 2)
     if exp % 2 == 1 {
       mod_mul(mod_mul(result, result), base)
-  } else {
+    } else {
       mod_mul(result, result)
     }
   } else {
