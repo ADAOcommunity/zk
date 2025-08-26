@@ -1,0 +1,14 @@
+{
+  "preamble": {
+    "title": "adao/zkp",
+    "description": "Aiken contracts for project 'adao/zkp'",
+    "version": "0.0.0",
+    "plutusVersion": "v3",
+    "compiler": {
+      "name": "Aiken",
+      "version": "v1.1.15+f03633e"
+    },
+    "license": "Apache-2.0"
+  },
+  "validators": []
+}
