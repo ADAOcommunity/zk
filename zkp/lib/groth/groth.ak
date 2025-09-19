@@ -1,7 +1,7 @@
 use aiken/builtin.{
   bls12_381_final_verify, bls12_381_g1_add, bls12_381_g1_scalar_mul,
   bls12_381_g1_uncompress, bls12_381_g2_uncompress, bls12_381_miller_loop,
-  bls12_381_mul_miller_loop_result
+  bls12_381_mul_miller_loop_result,
 }
 use aiken/collection/list
 
@@ -47,15 +47,15 @@ pub fn uncompress_vk(c: CompressedVK) -> VerifierKey {
     beta: bls12_381_g2_uncompress(c.beta),
     gamma: bls12_381_g2_uncompress(c.gamma),
     delta: bls12_381_g2_uncompress(c.delta),
-    vkIC: list.map(c.vkIC, fn(c_ic) { bls12_381_g1_uncompress(c_ic)}),
+    vkIC: list.map(c.vkIC, fn(c_ic) { bls12_381_g1_uncompress(c_ic) }),
   }
 }
 
 pub fn verify_compressed(
   vk: CompressedVK,
   proof: CompressedProof,
-  inputs: List<Int>
-){
+  inputs: List<Int>,
+) {
   let vk = uncompress_vk(vk)
   let proof = uncompress_proof(proof)
   verify(vk, proof, inputs)
@@ -69,7 +69,7 @@ pub fn pairing_check(
   alpha: G1Element,
   beta: G2Element,
   k: G1Element,
-  gamma: G2Element
+  gamma: G2Element,
 ) -> Bool {
   // e(A,B) = e(α,β) ∙ e(C,δ) ∙ e(K,γ)
   // e: miller loop
@@ -93,11 +93,11 @@ pub fn pairing_check(
 
 // Main verification function
 pub fn verify(vk: VerifierKey, proof: Proof, inputs: List<Int>) -> Bool {
-
-  let k = when vk.vkIC is {
-    [] -> fail @"empty vkIC?"
-    [head, ..tail] -> derive(tail, inputs, head)
-  }
+  let k =
+    when vk.vkIC is {
+      [] -> fail @"empty vkIC?"
+      [head, ..tail] -> derive(tail, inputs, head)
+    }
 
   // Pairing check
   pairing_check(
@@ -108,7 +108,7 @@ pub fn verify(vk: VerifierKey, proof: Proof, inputs: List<Int>) -> Bool {
     vk.alpha,
     vk.beta,
     k,
-    vk.gamma
+    vk.gamma,
   )
 }
 
@@ -126,10 +126,7 @@ pub fn derive(
           derive(
             vk_ic,
             public,
-            bls12_381_g1_add(
-              result,
-              bls12_381_g1_scalar_mul(scalar, i),
-            ),
+            bls12_381_g1_add(result, bls12_381_g1_scalar_mul(scalar, i)),
           )
       }
   }
@@ -158,8 +155,7 @@ test groth_verify_pass_1() {
       c: #"a4ef633c858a3ff194db50eacdf715f7296fb3d1202c54b543284e9656b69aa90f33ac0e2572d3ab847b88268dcd1f7e",
     }
   // Template of public values
-  let public_values: List<Int> =
-    [561, 3]
+  let public_values: List<Int> = [561, 3]
 
   verify_compressed(vk, pk, public_values)
 }
@@ -187,8 +183,7 @@ test groth_verify_fail_1() fail {
       c: #"8b84d092731c653b1accdda79c51e3f5d289bed7311189d927deadef0470e437e6d1d400634726512a79a015867424e3",
     }
   // Template of public values
-  let public_values: List<Int> =
-    [561, 3]
+  let public_values: List<Int> = [561, 3]
 
   verify_compressed(vk, pk, public_values)
 }
@@ -216,8 +211,7 @@ test groth_verify_pass_2() {
       c: #"8bc8cc3f11483138cc55d5f0389e67231f9e8465e5cb4a5a668e6e298d5c4febb2a18e86881c84dd03c5d33db65af272",
     }
   // Template of public values
-  let public_values: List<Int> =
-    [8827, 7]
+  let public_values: List<Int> = [8827, 7]
 
   verify_compressed(vk, pk, public_values)
 }
