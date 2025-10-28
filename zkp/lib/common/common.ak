@@ -1,6 +1,14 @@
 use aiken/collection/list
 use aiken/crypto
 use aiken/primitive/bytearray
+use aiken/builtin.{
+  bls12_381_g1_compress as builtin_g1_compress,
+  bls12_381_g1_uncompress,
+  bls12_381_g1_neg,
+  bls12_381_g2_compress as builtin_g2_compress,
+  bls12_381_g2_uncompress,
+  bls12_381_g2_neg
+}
 
 // Constants for BLS12-381
 pub const bls12_381_prime =
@@ -184,28 +192,44 @@ pub fn is_infinity(p: G1Point) -> Bool {
 
 pub fn g1_compress(p: G1Point) -> ByteArray {
   if is_infinity(p) {
-    // Special encoding for point at infinity
-    crypto.blake2b_256(#"00")
+    // BLS12-381 compressed point at infinity - 48 bytes with infinity and compression bits set
+    #"c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
   } else {
-    // Convert to affine coordinates first
+    // Convert to affine coordinates first  
     let z_inv = mod_inv(p.z, bls12_381_prime)
     when z_inv is {
       Some(z_inv_val) -> {
-        let x_affine = mod_mul(p.x, z_inv_val)
-        let y_affine = mod_mul(p.y, z_inv_val)
-        // Compress point by keeping x coordinate and y's sign
-        let compressed = serialize_field(x_affine)
-        // Add a bit for y's sign (we'll use the last byte)
-        let is_y_negative = y_affine > bls12_381_prime / 2
-        if is_y_negative {
-          bytearray.concat(compressed, #"01")
-        } else {
-          bytearray.concat(compressed, #"00")
-        }
+        let z_inv_squared = mod_mul(z_inv_val, z_inv_val)
+        let z_inv_cubed = mod_mul(z_inv_squared, z_inv_val)
+        let x_affine = mod_mul(p.x, z_inv_squared) 
+        let y_affine = mod_mul(p.y, z_inv_cubed)
+        
+        // Standard BLS12-381 compression format:
+        // 1. Serialize x coordinate as 48 bytes big-endian
+        let x_bytes = bytearray.from_int_big_endian(x_affine, 48)
+        
+        // 2. Set the compression bit (bit 383 = MSB of first byte) 
+        // 3. Set the sign bit (bit 381) based on y parity
+        let first_byte = bytearray.at(x_bytes, 0)
+        let y_is_negative = y_affine > (bls12_381_prime / 2)
+        
+        // Compression flag is 0x80 (bit 7), sign flag is 0x20 (bit 5)
+        let flags = if y_is_negative { 0x80 + 0x20 } else { 0x80 }
+        let new_first_byte = first_byte + flags
+        
+        // Replace first byte with flagged version
+        let flagged_first = bytearray.from_int_big_endian(new_first_byte, 1)
+        let remaining = bytearray.slice(x_bytes, 1, bytearray.length(x_bytes) - 1)
+        bytearray.concat(flagged_first, remaining)
       }
-      None -> crypto.blake2b_256(#"00")
+      None -> #"c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
     }
   }
+}
+
+// Helper function to check if y coordinate should have sign bit set
+fn is_y_negative(y: Field) -> Bool {
+  y > (bls12_381_prime / 2)
 }
 
 pub fn g1_decompress(bytes: ByteArray) -> Option<G1Point> {
