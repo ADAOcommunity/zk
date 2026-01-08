@@ -1,0 +1,10 @@
+{
+  "name": "bulletproof-vectors",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "blakejs": "^1.2.1",
+    "ffjavascript": "^0.2.63"
+  }
+}
