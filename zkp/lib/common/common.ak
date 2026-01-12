@@ -58,6 +58,10 @@ pub type VerificationError {
 }
 
 // Common utility functions for field operations
+pub fn make_scalar(a: Int) -> Field {
+  a % bls12_381_prime
+}
+
 pub fn mod_add(a: Field, b: Field) -> Field {
   ( a + b ) % bls12_381_prime
 }
