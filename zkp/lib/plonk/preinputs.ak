@@ -1,10 +1,11 @@
 use aiken/collection/list
-use common/common.{Field, mod_pow}
+use aiken/crypto/bls12_381/scalar.{Scalar, scale}
+use aiken/crypto/bitwise.{State}
 
 pub type PlonkPreInputs {
     power: Int,
-    k1: Field,
-    k2: Field,
+    k1: Scalar,
+    k2: Scalar,
     q_m: ByteArray,
     q_l: ByteArray,
     q_r: ByteArray,
@@ -18,14 +19,14 @@ pub type PlonkPreInputs {
 
 pub type PreparedPlonkPreInputs {
     n: Int,
-    generators: List<Field>,
+    generators: List<State<Scalar>>,
     inputs: PlonkPreInputs,
 }
 
-pub fn plonk_prepare_preinputs(inputs: PlonkPreInputs, generator: Field, n_public: Int) -> PreparedPlonkPreInputs {
+pub fn plonk_prepare_preinputs(inputs: PlonkPreInputs, generator: State<Scalar>, n_public: Int) -> PreparedPlonkPreInputs {
     PreparedPlonkPreInputs {
-        n: mod_pow(2, inputs.power),
-        generators: list.map(list.range(0, n_public), fn(n) { mod_pow(generator, n) }),
+        n: scalar.to_int(scale(scalar.from_int(2), inputs.power)),
+        generators: list.map(list.range(0, n_public), fn(n) { scale(generator, n) }),
         inputs: inputs,
     }
 }

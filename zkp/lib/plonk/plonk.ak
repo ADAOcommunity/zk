@@ -339,19 +339,19 @@ pub fn compute_challenges(
   // Compute beta and gamma challenges
   let ts2 = ts1
   // Convert the transcript hash to a scalar field element
-  expect Some(beta) =
-    scalar.from_bytearray_big_endian(
+  let beta =
+    scalar.from_bytes(
       generate_transcript(bytearray.concat(ts2, #[1])),
     )
-  expect Some(gamma) =
-    scalar.from_bytearray_big_endian(
+  let gamma =
+    scalar.from_bytes(
       generate_transcript(bytearray.concat(ts2, #[2])),
     )
 
   // Compute alpha challenge
   let ts3 = bytearray.concat(ts2, proof.z)
-  expect Some(alpha) =
-    scalar.from_bytearray_big_endian(generate_transcript(ts3))
+  let alpha =
+    scalar.from_bytes(generate_transcript(ts3))
 
   // Compute zeta challenge
   let ts4 =
@@ -359,14 +359,14 @@ pub fn compute_challenges(
       ts3,
       bytearray.concat(proof.t1, bytearray.concat(proof.t2, proof.t3)),
     )
-  expect Some(zeta) = scalar.from_bytearray_big_endian(generate_transcript(ts4))
+  let zeta = scalar.from_bytes(generate_transcript(ts4))
 
   // Compute v and u challenges
   let ts5 =
-    bytearray.concat(ts4, scalar.to_bytearray_big_endian(proof.eval_a, 32))
-  expect Some(v) = scalar.from_bytearray_big_endian(generate_transcript(ts5))
+    bytearray.concat(ts4, scalar.to_bytes(proof.eval_a))
+  let v = scalar.from_bytes(generate_transcript(ts5))
   expect Some(u) =
-    scalar.from_bytearray_big_endian(
+    scalar.from_bytes(
       generate_transcript(bytearray.concat(ts5, #[1])),
     )
 
