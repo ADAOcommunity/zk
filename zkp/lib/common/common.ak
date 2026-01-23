@@ -2,7 +2,9 @@ use aiken/collection/list
 use aiken/crypto
 use aiken/primitive/bytearray
 use aiken/builtin.{blake2b_224}
-use aiken/crypto/bls12_381/scalar
+use aiken/crypto/bls12_381/scalar.{Scalar}
+use aiken/crypto/bitwise.{State}
+use aiken/crypto/bls12_381/g1
 
 // Constants for BLS12-381
 pub const bls12_381_prime =
@@ -175,7 +177,15 @@ pub fn scalar_bs_rt(bs: ByteArray) -> ByteArray {
   scalar.to_bytes(scalar.from_bytes(bs))
 }
 
-// Point operations (expanding on existing ones)
+pub fn scalar_sum(scalars: List<State<Scalar>>) -> State<Scalar> {
+  list.foldl(scalars, scalar.from_int(0), fn(acc, x) { scalar.add(acc, x) })
+}
+
+// G1 operations (expanding on existing ones)
+pub fn g1_sum(points: List<G1Element>) -> G1Element {
+  list.foldl(points, g1.zero, g1.add)
+}
+
 pub fn g1_generator() -> G1Point {
   // BLS12-381 G1 generator coordinates
   Point {

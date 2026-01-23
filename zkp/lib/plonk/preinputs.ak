@@ -4,8 +4,8 @@ use aiken/crypto/bitwise.{State}
 
 pub type PlonkPreInputs {
     power: Int,
-    k1: Scalar,
-    k2: Scalar,
+    k1: State<Scalar>,
+    k2: State<Scalar>,
     q_m: ByteArray,
     q_l: ByteArray,
     q_r: ByteArray,
