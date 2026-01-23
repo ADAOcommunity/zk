@@ -1,10 +1,10 @@
+use aiken/builtin.{blake2b_224}
 use aiken/collection/list
 use aiken/crypto
-use aiken/primitive/bytearray
-use aiken/builtin.{blake2b_224}
-use aiken/crypto/bls12_381/scalar.{Scalar}
 use aiken/crypto/bitwise.{State}
 use aiken/crypto/bls12_381/g1
+use aiken/crypto/bls12_381/scalar.{Scalar}
+use aiken/primitive/bytearray
 
 // Constants for BLS12-381
 pub const bls12_381_prime =
@@ -167,8 +167,8 @@ fn mod_pow_loop(b, e, result) {
 // Blake2b-224 utilities
 
 pub fn concat_and_blake2b_224(inputs: List<ByteArray>) -> ByteArray {
-    let concatenated = list.foldl(inputs, #"", bytearray.concat)
-    blake2b_224(concatenated)
+  let concatenated = list.foldl(inputs, #"", bytearray.concat)
+  blake2b_224(concatenated)
 }
 
 // Scalar utilities
