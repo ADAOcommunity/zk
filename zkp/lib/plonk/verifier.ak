@@ -40,7 +40,7 @@ pub fn verify_plonk(
   let comm_w_omega: G1Element = g1.decompress(proof.w_omega)
   let comm_w_omega_zeta: G1Element = g1.decompress(proof.w_omega_zeta)
 
-  // clamp scalars
+  // convert polynomial evaluations
   let a_eval: State<Scalar> = scalar.from_int(proof.a_eval)
   let b_eval: State<Scalar> = scalar.from_int(proof.b_eval)
   let c_eval: State<Scalar> = scalar.from_int(proof.c_eval)
@@ -48,97 +48,111 @@ pub fn verify_plonk(
   let s2: State<Scalar> = scalar.from_int(proof.s_sig2_p)
   let z_omega: State<Scalar> = scalar.from_int(proof.z_omega)
 
+  // prepare negated public inputs for polynomial evaluation
   let w_all: List<State<Scalar>> =
     list.map(pub_inputs, fn(x) { scalar.neg(scalar.from_int(x)) })
 
+  // extract generator elements from trusted setup
   expect Some(gen_tail) = list.tail(preinputs.generators)
   expect Some(gen_2nd) = list.head(gen_tail)
 
+  // define scalar constants
   let scalar1: State<Scalar> = scalar.from_int(1)
 
   // I guess we don't need to decompress the generators? The aiken documentation is not clear on this.
   // let g1_generator = g1.decompress(g1.generator)
   // let g2_generator = g2.decompress(g2.generator)
-  let beta_bs: ByteArray =
-    concat_and_blake2b_224(
-      [
-        inputs.q_m,
-        inputs.q_l,
-        inputs.q_r,
-        inputs.q_o,
-        inputs.q_c,
-        inputs.s_sig1,
-        inputs.s_sig2,
-        inputs.s_sig3,
-        list.foldl(
-          pub_inputs,
-          #"",
-          fn(a, b) { bytearray.concat(b, bytearray.from_int_big_endian(a, 32)) },
-        ),
-        proof.commitment_a,
-        proof.commitment_b,
-        proof.commitment_c,
-      ],
+  //
+  // compute Fiat-Shamir challenges
+  let beta: State<Scalar> =
+    scalar.from_bytes(
+      concat_and_blake2b_224(
+        [
+          inputs.q_m,
+          inputs.q_l,
+          inputs.q_r,
+          inputs.q_o,
+          inputs.q_c,
+          inputs.s_sig1,
+          inputs.s_sig2,
+          inputs.s_sig3,
+          list.foldl(
+            pub_inputs,
+            #"",
+            fn(a, b) {
+              bytearray.concat(b, bytearray.from_int_big_endian(a, 32))
+            },
+          ),
+          proof.commitment_a,
+          proof.commitment_b,
+          proof.commitment_c,
+        ],
+      ),
     )
-  let beta: State<Scalar> = scalar.from_bytes(beta_bs)
-  let gamma_bs: ByteArray = blake2b_224(scalar.to_bytes(beta))
-  let gamma: State<Scalar> = scalar.from_bytes(gamma_bs)
-
-  let alpha_bs: ByteArray =
-    concat_and_blake2b_224(
-      [scalar.to_bytes(beta), scalar.to_bytes(gamma), proof.commitment_z],
+  let gamma: State<Scalar> =
+    scalar.from_bytes(blake2b_224(scalar.to_bytes(beta)))
+  let alpha: State<Scalar> =
+    scalar.from_bytes(
+      concat_and_blake2b_224(
+        [scalar.to_bytes(beta), scalar.to_bytes(gamma), proof.commitment_z],
+      ),
     )
-  let alpha: State<Scalar> = scalar.from_bytes(alpha_bs)
-
-  let zeta_bs: ByteArray =
-    concat_and_blake2b_224(
-      [scalar.to_bytes(alpha), proof.t_low, proof.t_mid, proof.t_high],
+  let zeta: State<Scalar> =
+    scalar.from_bytes(
+      concat_and_blake2b_224(
+        [scalar.to_bytes(alpha), proof.t_low, proof.t_mid, proof.t_high],
+      ),
     )
-  let zeta: State<Scalar> = scalar.from_bytes(zeta_bs)
-
-  let v_bs: ByteArray =
-    concat_and_blake2b_224(
-      [
-        scalar.to_bytes(zeta),
-        scalar.to_bytes(a_eval),
-        scalar.to_bytes(b_eval),
-        scalar.to_bytes(c_eval),
-        scalar.to_bytes(s1),
-        scalar.to_bytes(s2),
-        scalar.to_bytes(z_omega),
-      ],
+  let v: State<Scalar> =
+    scalar.from_bytes(
+      concat_and_blake2b_224(
+        [
+          scalar.to_bytes(zeta),
+          scalar.to_bytes(a_eval),
+          scalar.to_bytes(b_eval),
+          scalar.to_bytes(c_eval),
+          scalar.to_bytes(s1),
+          scalar.to_bytes(s2),
+          scalar.to_bytes(z_omega),
+        ],
+      ),
     )
-  let v: State<Scalar> = scalar.from_bytes(v_bs)
-  let u_bs: ByteArray =
-    concat_and_blake2b_224([proof.w_omega, proof.w_omega_zeta])
-  let u: State<Scalar> = scalar.from_bytes(u_bs)
+  let u: State<Scalar> =
+    scalar.from_bytes(
+      concat_and_blake2b_224([proof.w_omega, proof.w_omega_zeta]),
+    )
 
+  // compute powers of zeta for polynomial evaluation
   let pow2_zeta_p: State<Scalar> = scale2(zeta, bls12_381_prime)
   let pow2_zeta_p_minus_1: State<Scalar> = scalar.sub(pow2_zeta_p, scalar1)
 
   // calculate lagrange polynomials
-  let langrange_polys: List<State<Scalar>> =
+  let lagrange_polys: List<State<Scalar>> =
     list.map2(
       preinputs.generators,
       preproof.lagrange_inverses,
       fn(x, y) { scalar.mul(scalar.mul(x, pow2_zeta_p_minus_1), y) },
     )
-  expect Some(lagrange_poly_head) = list.head(langrange_polys)
+  expect Some(lagrange_poly_head) = list.head(lagrange_polys)
 
+  // compute public input polynomial evaluation at zeta
   let pi_zeta: State<Scalar> =
     scalar_sum(
-      list.map2(w_all, langrange_polys, fn(w, lag) { scalar.mul(w, lag) }),
+      list.map2(w_all, lagrange_polys, fn(w, lag) { scalar.mul(w, lag) }),
     )
 
+  // compute derived scalars for verification equations
   let alpha_sq = scalar.mul(alpha, alpha)
   let alpha_z_omega = scalar.mul(alpha, z_omega)
   let beta_zeta = scalar.mul(beta, zeta)
+  // compute shifted witness polynomials
   let a_gamma = scalar.add(a_eval, gamma)
   let b_gamma = scalar.add(b_eval, gamma)
   let c_gamma = scalar.add(c_eval, gamma)
-
   let beta_s1 = scalar.mul(beta, s1)
   let beta_s2 = scalar.mul(beta, s2)
+
+  // compute linearization polynomial r(zeta)
   let r0 =
     scalar.sub(
       scalar.sub(pi_zeta, scalar.mul(lagrange_poly_head, alpha_sq)),
@@ -151,8 +165,8 @@ pub fn verify_plonk(
       ),
     )
 
-  // batch polynomial commitments
-  let bpc_g1 =
+  // batch constraint polynomial commitments
+  let constraint_commitments =
     g1_sum(
       [
         g1.scale(q_m, scalar.mul(a_eval, b_eval)),
@@ -163,7 +177,6 @@ pub fn verify_plonk(
         g1.scale(
           comm_z,
           {
-            // product: (a_gamma + beta_zeta) * (b_gamma + beta_zeta * k1) * (c_gamma + beta_zeta * k2) * alpha
             let product =
               scalar.add(a_gamma, beta_zeta)
                 |> scalar.mul(
@@ -204,12 +217,12 @@ pub fn verify_plonk(
       ],
     )
 
-  let bpc_full =
+  // combine batched polynomial commitments
+  let batched_polynomial_commitments =
     g1.add(
-      bpc_g1,
+      constraint_commitments,
       {
-        // nested commitments: comm_a + v * (comm_b + v * (comm_c + v * (s_sig1 + v * s_sig2)))
-        let nested_comms =
+        let sigma_witness_commits =
           g1.add(s_sig1, g1.scale(s_sig2, v))
             |> g1.scale(v)
             |> g1.add(comm_c, _)
@@ -218,16 +231,16 @@ pub fn verify_plonk(
             |> g1.scale(v)
             |> g1.add(comm_a, _)
 
-        g1.scale(nested_comms, v)
+        g1.scale(sigma_witness_commits, v)
       },
     )
 
+  // batch evaluations
   let group_encoded_batch_eval =
     g1.scale(
       g1.generator,
       {
-        // nested evaluation: a_eval + v * (b_eval + v * (c_eval + v * (s1 + v * s2)))
-        let nested_eval =
+        let sigma_witness_evals =
           scalar.add(s1, scalar.mul(v, s2))
             |> scalar.mul(v, _)
             |> scalar.add(c_eval, _)
@@ -235,19 +248,18 @@ pub fn verify_plonk(
             |> scalar.add(b_eval, _)
             |> scalar.mul(v, _)
             |> scalar.add(a_eval, _)
-        // final expression: -r0 + v * nested_eval + u * z_omega
         scalar.add(
-          scalar.add(scalar.neg(r0), scalar.mul(v, nested_eval)),
+          scalar.add(scalar.neg(r0), scalar.mul(v, sigma_witness_evals)),
           scalar.mul(u, z_omega),
         )
       },
     )
 
-  //  bls12_381_millerLoop (commWOmega + scale u commWOmegaZeta) x2)
+  // verify polynomial evaluations
   let miller_loop_1 =
     miller_loop(g1.add(comm_w_omega, g1.scale(comm_w_omega_zeta, u)), x2)
 
-  //  (bls12_381_millerLoop (scale zeta commWOmega + scale (u * zeta * head (tail gens)) commWOmegaZeta + batchPolyCommitFull - groupEncodedBatchEval) bls12_381_G2_generator)
+  // verify constraint satisfaction
   let miller_loop_2 =
     miller_loop(
       g1.add(
@@ -255,15 +267,14 @@ pub fn verify_plonk(
           g1.scale(comm_w_omega, zeta),
           g1.scale(comm_w_omega_zeta, scalar.mul(u, scalar.mul(zeta, gen_2nd))),
         ),
-        g1.sub(bpc_full, group_encoded_batch_eval),
+        g1.sub(batched_polynomial_commitments, group_encoded_batch_eval),
       ),
       g2.generator,
     )
 
-  // bls12_381_finalVerify
   let final_verification = final_exponentiation(miller_loop_1, miller_loop_2)
 
-  // and (zipWith (\x y -> x * Scalar n * (zeta - y) == one) lagsInv gens)
+  // verify lagrange polynomial inverses
   let lagrange_check =
     scalar_sum(
       list.map2(
