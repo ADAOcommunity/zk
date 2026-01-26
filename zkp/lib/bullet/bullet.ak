@@ -1,5 +1,6 @@
 use aiken/collection/list
 use aiken/crypto
+use aiken/crypto/bls12_381/scalar.{field_prime}
 use aiken/primitive/bytearray
 use common/common
 
@@ -64,9 +65,9 @@ fn verify_inner_product(
   let h_commit = compute_vector_commitments(r_vec, h_vec)
   let u_scaled =
     common.Point {
-      x: u.x * inner_prod % common.bls12_381_prime,
-      y: u.y * inner_prod % common.bls12_381_prime,
-      z: u.z * inner_prod % common.bls12_381_prime,
+      x: u.x * inner_prod % field_prime,
+      y: u.y * inner_prod % field_prime,
+      z: u.z * inner_prod % field_prime,
     }
   let lhs = p
   let rhs =
@@ -228,9 +229,9 @@ pub fn generate_proof(
   // 5. Generate s commitment
   let s =
     common.Point {
-      x: vk.h.x * mu % common.bls12_381_prime,
-      y: vk.h.y * mu % common.bls12_381_prime,
-      z: vk.h.z * mu % common.bls12_381_prime,
+      x: vk.h.x * mu % field_prime,
+      y: vk.h.y * mu % field_prime,
+      z: vk.h.z * mu % field_prime,
     }
 
   BulletproofProof { a, s, t1, t2, tau_x, mu, l_vec, r_vec }
@@ -259,15 +260,15 @@ fn commit(
 ) -> common.G1Point {
   let g_scaled =
     common.Point {
-      x: g.x * value % common.bls12_381_prime,
-      y: g.y * value % common.bls12_381_prime,
-      z: g.z * value % common.bls12_381_prime,
+      x: g.x * value % field_prime,
+      y: g.y * value % field_prime,
+      z: g.z * value % field_prime,
     }
   let h_scaled =
     common.Point {
-      x: h.x * randomness % common.bls12_381_prime,
-      y: h.y * randomness % common.bls12_381_prime,
-      z: h.z * randomness % common.bls12_381_prime,
+      x: h.x * randomness % field_prime,
+      y: h.y * randomness % field_prime,
+      z: h.z * randomness % field_prime,
     }
   // Add the two scaled points
   common.Point {
@@ -285,10 +286,7 @@ pub fn compute_inner_product(
   when (l_vec, r_vec) is {
     ([], []) -> 0
     ([x, ..xs], [y, ..ys]) ->
-      common.mod_add(
-        x * y % common.bls12_381_prime,
-        compute_inner_product(xs, ys),
-      )
+      common.mod_add(x * y % field_prime, compute_inner_product(xs, ys))
     (_, _) -> fail @"Vector lengths must match"
   }
 }
@@ -327,9 +325,9 @@ pub fn compute_vector_commitments(
     ([s, ..ss], [g, ..gs]) -> {
       let scaled =
         common.Point {
-          x: g.x * s % common.bls12_381_prime,
-          y: g.y * s % common.bls12_381_prime,
-          z: g.z * s % common.bls12_381_prime,
+          x: g.x * s % field_prime,
+          y: g.y * s % field_prime,
+          z: g.z * s % field_prime,
         }
       let rest = compute_vector_commitments(ss, gs)
       // Add points using BLS12-381 point addition
@@ -363,10 +361,7 @@ pub fn vector_scalar_multiplication(
   when vec is {
     [] -> []
     [x, ..xs] ->
-      [
-        x * scalar % common.bls12_381_prime,
-        ..vector_scalar_multiplication(xs, scalar)
-      ]
+      [x * scalar % field_prime, ..vector_scalar_multiplication(xs, scalar)]
   }
 }
 
@@ -377,8 +372,7 @@ pub fn hadamard_product(
 ) -> List<common.Field> {
   when (vec1, vec2) is {
     ([], []) -> []
-    ([x, ..xs], [y, ..ys]) ->
-      [x * y % common.bls12_381_prime, ..hadamard_product(xs, ys)]
+    ([x, ..xs], [y, ..ys]) -> [x * y % field_prime, ..hadamard_product(xs, ys)]
     (_, _) -> fail @"Vector lengths must match"
   }
 }

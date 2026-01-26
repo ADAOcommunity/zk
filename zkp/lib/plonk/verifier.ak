@@ -4,9 +4,9 @@ use aiken/crypto/bitwise.{State}
 use aiken/crypto/bls12_381/g1
 use aiken/crypto/bls12_381/g2
 use aiken/crypto/bls12_381/pairing.{final_exponentiation, miller_loop}
-use aiken/crypto/bls12_381/scalar.{Scalar, scale2}
+use aiken/crypto/bls12_381/scalar.{Scalar, field_prime, scale2}
 use aiken/primitive/bytearray
-use common/common.{bls12_381_prime, concat_and_blake2b_224, g1_sum, scalar_sum}
+use common/common.{concat_and_blake2b_224, g1_sum, scalar_sum}
 use plonk/preinputs.{PlonkPreInputs, PreparedPlonkPreInputs}
 use plonk/proofs.{PlonkProof, PreparedPlonkProof}
 
@@ -123,7 +123,7 @@ pub fn verify_plonk(
     )
 
   // compute powers of zeta for polynomial evaluation
-  let pow2_zeta_p: State<Scalar> = scale2(zeta, bls12_381_prime)
+  let pow2_zeta_p: State<Scalar> = scale2(zeta, field_prime)
   let pow2_zeta_p_minus_1: State<Scalar> = scalar.sub(pow2_zeta_p, scalar1)
 
   // calculate lagrange polynomials
