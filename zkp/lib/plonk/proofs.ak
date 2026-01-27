@@ -3,7 +3,7 @@ use aiken/collection/list
 use aiken/crypto/bitwise.{State}
 use aiken/crypto/bls12_381/scalar.{Scalar}
 use aiken/primitive/bytearray
-use common/common.{concat_and_blake2b_224, scalar_bs_rt}
+use common/common.{concat_and_blake2b_224, scalar_rt_bs}
 use plonk/preinputs.{PreparedPlonkPreInputs}
 
 pub type PlonkProof {
@@ -53,10 +53,10 @@ pub fn plonk_prepare_proof(
       proof.commitment_b,
       proof.commitment_c,
     ]
-  let beta = scalar_bs_rt(concat_and_blake2b_224(beta_inputs))
-  let gamma = scalar_bs_rt(blake2b_224(beta))
+  let beta = scalar_rt_bs(concat_and_blake2b_224(beta_inputs))
+  let gamma = scalar_rt_bs(blake2b_224(beta))
   let alpha =
-    scalar_bs_rt(concat_and_blake2b_224([beta, gamma, proof.commitment_z]))
+    scalar_rt_bs(concat_and_blake2b_224([beta, gamma, proof.commitment_z]))
   let zeta =
     scalar.from_bytes(
       concat_and_blake2b_224([alpha, proof.t_low, proof.t_mid, proof.t_high]),

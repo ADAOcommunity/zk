@@ -166,8 +166,12 @@ pub fn concat_and_blake2b_224(inputs: List<ByteArray>) -> ByteArray {
 
 // Scalar utilities
 
-pub fn scalar_bs_rt(bs: ByteArray) -> ByteArray {
+pub fn scalar_rt_bs(bs: ByteArray) -> ByteArray {
   scalar.to_bytes(scalar.from_bytes(bs))
+}
+
+pub fn scalar_rt_int(i: Int) -> Int {
+  scalar.to_int(scalar.from_int(i))
 }
 
 pub fn scalar_sum(scalars: List<State<Scalar>>) -> State<Scalar> {
@@ -177,6 +181,20 @@ pub fn scalar_sum(scalars: List<State<Scalar>>) -> State<Scalar> {
 // G1 operations (expanding on existing ones)
 pub fn g1_sum(points: List<G1Element>) -> G1Element {
   list.foldl(points, g1.zero, g1.add)
+}
+
+pub fn g1_from_raw(raw: List<Int>) -> Option<G1Point> {
+  when raw is {
+    [] -> None
+    [_] -> None
+    [x, y, ..] -> {
+      Some(Point {
+        x: scalar_rt_int(x),
+        y: scalar_rt_int(y),
+        z: 1,
+      })
+    }
+  }
 }
 
 pub fn g1_generator() -> G1Point {
