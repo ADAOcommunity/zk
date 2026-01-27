@@ -1,4 +1,4 @@
-use groth/groth.{CompressedVK, CompressedProof, verify_compressed}
+use groth/groth.{CompressedProof, CompressedVK, verify_compressed}
 
 test groth_verify_pass_1() {
   //  Template of VK

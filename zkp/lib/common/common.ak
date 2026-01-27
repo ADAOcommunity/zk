@@ -187,13 +187,7 @@ pub fn g1_from_raw(raw: List<Int>) -> Option<G1Point> {
   when raw is {
     [] -> None
     [_] -> None
-    [x, y, ..] -> {
-      Some(Point {
-        x: scalar_rt_int(x),
-        y: scalar_rt_int(y),
-        z: 1,
-      })
-    }
+    [x, y, ..] -> Some(Point { x: scalar_rt_int(x), y: scalar_rt_int(y), z: 1 })
   }
 }
 
