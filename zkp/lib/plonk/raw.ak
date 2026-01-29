@@ -1,7 +1,9 @@
-use plonk/preinputs.{PreparedPlonkPreInputs, PlonkPreInputs, plonk_prepare_preinputs}
-use plonk/proofs.{PlonkProof}
-use common/common.{G1Point, G2Point, g1_compress, g2_compress}
 use aiken/crypto/bls12_381/scalar
+use common/common.{G1Point, G2Point, g1_compress, g2_compress}
+use plonk/preinputs.{
+  PlonkPreInputs, PreparedPlonkPreInputs, plonk_prepare_preinputs,
+}
+use plonk/proofs.{PlonkProof}
 
 pub type PlonkVerificationKey {
   n_public: Int,
@@ -38,8 +40,11 @@ pub type RawPlonkProof {
   z_omega: Int,
 }
 
-pub fn vkey_to_prepared_preinputs(vkey: PlonkVerificationKey) -> PreparedPlonkPreInputs {
-    let preinputs = PlonkPreInputs {
+pub fn vkey_to_prepared_preinputs(
+  vkey: PlonkVerificationKey,
+) -> PreparedPlonkPreInputs {
+  let preinputs =
+    PlonkPreInputs {
       power: vkey.power,
       k1: scalar.from_int(vkey.k1),
       k2: scalar.from_int(vkey.k2),
@@ -54,11 +59,11 @@ pub fn vkey_to_prepared_preinputs(vkey: PlonkVerificationKey) -> PreparedPlonkPr
       x2: g2_compress(vkey.x2),
     }
 
-    plonk_prepare_preinputs(
-      inputs: preinputs,
-      generator: scalar.from_int(vkey.w),
-      n_public: vkey.n_public
-    )
+  plonk_prepare_preinputs(
+    inputs: preinputs,
+    generator: scalar.from_int(vkey.w),
+    n_public: vkey.n_public,
+  )
 }
 
 pub fn prepare_raw_proof(proof: RawPlonkProof) -> PlonkProof {
