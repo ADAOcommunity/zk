@@ -178,15 +178,15 @@ pub const test_plonk_pub_inputs: List<Int> =
     5,
   ]
 
-test test_plonk_verification_with_affine_points() {
-  let prepared_preinputs = prepare_affine_vkey(test_plonk_vkey_affine)
-  let proof = prepare_affine_proof(test_plonk_proof_affine)
-  let prepared_proof =
-    plonk_prepare_proof(prepared_preinputs, test_plonk_pub_inputs, proof)
+pub const test_prepared_preinputs = prepare_affine_vkey(test_plonk_vkey_affine)
+pub const test_proof = prepare_affine_proof(test_plonk_proof_affine)
+pub const test_prepared_proof =
+    plonk_prepare_proof(test_prepared_preinputs, test_plonk_pub_inputs, test_proof)
 
+test test_plonk_verification_with_affine_points() {
   verify_plonk(
-    preinputs: prepared_preinputs,
+    preinputs: test_prepared_preinputs,
     pub_inputs: test_plonk_pub_inputs,
-    preproof: prepared_proof,
+    proof: test_prepared_proof,
   )
 }

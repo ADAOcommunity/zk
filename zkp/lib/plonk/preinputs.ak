@@ -1,6 +1,8 @@
 use aiken/collection/list
 use aiken/crypto/bitwise.{State}
 use aiken/crypto/bls12_381/scalar.{Scalar, scale}
+use aiken/crypto/bls12_381/g1
+use aiken/crypto/bls12_381/g2
 
 pub type PlonkPreInputs {
   power: Int,
@@ -20,7 +22,18 @@ pub type PlonkPreInputs {
 pub type PreparedPlonkPreInputs {
   n: Int,
   generators: List<State<Scalar>>,
-  inputs: PlonkPreInputs,
+  power: Int,
+  k1: State<Scalar>,
+  k2: State<Scalar>,
+  q_m: G1Element,
+  q_l: G1Element,
+  q_r: G1Element,
+  q_o: G1Element,
+  q_c: G1Element,
+  s_sig1: G1Element,
+  s_sig2: G1Element,
+  s_sig3: G1Element,
+  x2: G2Element,
 }
 
 pub fn plonk_prepare_preinputs(
@@ -31,6 +44,17 @@ pub fn plonk_prepare_preinputs(
   PreparedPlonkPreInputs {
     n: scalar.to_int(scale(scalar.from_int(2), inputs.power)),
     generators: list.map(list.range(0, n_public), fn(n) { scale(generator, n) }),
-    inputs,
+    power: inputs.power,
+    k1: inputs.k1,
+    k2: inputs.k2,
+    q_m: g1.decompress(inputs.q_m),
+    q_l: g1.decompress(inputs.q_l),
+    q_r: g1.decompress(inputs.q_r),
+    q_o: g1.decompress(inputs.q_o),
+    q_c: g1.decompress(inputs.q_c),
+    s_sig1: g1.decompress(inputs.s_sig1),
+    s_sig2: g1.decompress(inputs.s_sig2),
+    s_sig3: g1.decompress(inputs.s_sig3),
+    x2: g2.decompress(inputs.x2),
   }
 }
