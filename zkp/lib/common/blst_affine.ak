@@ -1,5 +1,11 @@
 use aiken/primitive/bytearray
 
+/// (p-1)/2 for BLS12-381 field modulus, used to determine y-coordinate sort bit.
+/// p = 4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787
+/// half_p = (p-1)/2
+const bls12_381_half_prime: Int =
+  2001204777610833696708894912867952078278441409969503942666029068062015825245418932221343814564507832018947136279893
+
 /// Affine representation of a point on the BLS12-381 G1 curve
 pub type G1Affine {
   /// Point at infinity
@@ -31,19 +37,19 @@ pub fn g1_affine_compress(point: G1Affine) -> ByteArray {
       // Set compression bit (0x80) and determine y-coordinate lexicographic ordering
       let first_x_byte = bytearray.take(x, 1)
       let rest_x = bytearray.drop(x, 1)
-      // Check if y is lexicographically larger than (p-y) mod p
-      // For now, we'll use a simple heuristic: check if y's first byte > 0x7f
-      let first_y_byte = bytearray.take(y, 1)
-      let y_is_larger = bytearray.to_int_big_endian(first_y_byte) >= 128
+      // Check if y > (p-1)/2 to determine which of the two possible y values this is.
+      // The sort bit (0x20) indicates the "lexicographically larger" y-coordinate.
+      let y_int = bytearray.to_int_big_endian(y)
+      let y_is_larger = y_int > bls12_381_half_prime
       // Set the compression bit (0x80) and y-coordinate bit if needed
       let compressed_first_byte =
         if y_is_larger {
+          // 0x80 | 0x20 = 0xa0: compression + sort bit
           bytearray.or_bytes(first_x_byte, #"a0", False)
         } else {
-          // 0x80 | 0x20
+          // 0x80 only: compression bit, no sort bit
           bytearray.or_bytes(first_x_byte, #"80", False)
         }
-      // 0x80 only
       bytearray.concat(compressed_first_byte, rest_x)
     }
   }
@@ -59,28 +65,36 @@ pub fn g2_affine_compress(point: G2Affine) -> ByteArray {
       // 95 bytes of zeros
       bytearray.concat(infinity_byte, zeros)
     }
-    G2Point { x: (x0, x1), y: (y0, _y1) } -> {
+    G2Point { x: (x0, x1), y: (y0, y1) } -> {
       // Manual BLS12-381 G2 compression
-      // G2 compression is similar to G1 but works on Fp2 elements
-      // Each coordinate is a pair of field elements (x0, x1) representing x0 + x1*u
-      // Set compression bit on the first byte of x0 (the higher-order part)
-      let first_x0_byte = bytearray.take(x0, 1)
-      let rest_x0 = bytearray.drop(x0, 1)
-      // Determine lexicographic ordering of y-coordinate
-      // For G2, we compare y with (p-y) in Fp2 ordering
-      let first_y0_byte = bytearray.take(y0, 1)
-      let y_is_larger = bytearray.to_int_big_endian(first_y0_byte) >= 128
+      // G2 uses Fp2 elements: each coordinate is (c0, c1) representing c0 + c1*u
+      // where x0=c0 (real), x1=c1 (imaginary) per snarkjs convention.
+      //
+      // BLST serialization format: [c1_with_flags | c0] (imaginary first, real second)
+      // So we put x1 first (with flags), then x0.
+      let first_x1_byte = bytearray.take(x1, 1)
+      let rest_x1 = bytearray.drop(x1, 1)
+      // Determine y sort bit using Fp2 lexicographic ordering:
+      // Compare c1 (imaginary) of y first. If c1 is zero, compare c0 (real).
+      let y1_int = bytearray.to_int_big_endian(y1)
+      let y0_int = bytearray.to_int_big_endian(y0)
+      let y_is_larger =
+        if y1_int == 0 {
+          y0_int > bls12_381_half_prime
+        } else {
+          y1_int > bls12_381_half_prime
+        }
       // Set compression and y-ordering bits
       let compressed_first_byte =
         if y_is_larger {
-          bytearray.or_bytes(first_x0_byte, #"a0", False)
+          // 0x80 | 0x20 = 0xa0: compression + sort bit
+          bytearray.or_bytes(first_x1_byte, #"a0", False)
         } else {
-          // 0x80 | 0x20
-          bytearray.or_bytes(first_x0_byte, #"80", False)
+          // 0x80 only: compression bit, no sort bit
+          bytearray.or_bytes(first_x1_byte, #"80", False)
         }
-      // 0x80 only
-      // Return compressed form: compressed_x0 + x1 (96 bytes total)
-      bytearray.concat(bytearray.concat(compressed_first_byte, rest_x0), x1)
+      // Return compressed form: [c1_with_flags | c0] (96 bytes total)
+      bytearray.concat(bytearray.concat(compressed_first_byte, rest_x1), x0)
     }
   }
 }
