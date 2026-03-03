@@ -98,3 +98,17 @@ pub fn g2_affine_compress(point: G2Affine) -> ByteArray {
     }
   }
 }
+
+pub fn g1_on_curve(point: G1Affine) -> Bool {
+  when point is {
+    G1Infinity -> True
+    G1Point { x, y } -> {
+      // Check if the point satisfies the BLS12-381 G1 curve equation: y^2 = x^3 + 4
+      let x_int = bytearray.to_int_big_endian(x)
+      let y_int = bytearray.to_int_big_endian(y)
+      let lhs = (y_int * y_int) % bls12_381_base_prime
+      let rhs = (x_int * x_int * x_int + 4) % bls12_381_base_prime
+      lhs == rhs
+    }
+  }
+}
