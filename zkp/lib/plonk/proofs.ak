@@ -87,15 +87,15 @@ pub fn plonk_prepare_proof(
     )
 
   // uncompress the proof commitments
-  let commitment_a: G1Element = g1.decompress(proof.commitment_a)
-  let commitment_b: G1Element = g1.decompress(proof.commitment_b)
-  let commitment_c: G1Element = g1.decompress(proof.commitment_c)
-  let commitment_z: G1Element = g1.decompress(proof.commitment_z)
-  let t_low: G1Element = g1.decompress(proof.t_low)
-  let t_mid: G1Element = g1.decompress(proof.t_mid)
-  let t_high: G1Element = g1.decompress(proof.t_high)
-  let w_omega: G1Element = g1.decompress(proof.w_omega)
-  let w_omega_zeta: G1Element = g1.decompress(proof.w_omega_zeta)
+  expect commitment_a: G1Element = g1.decompress(proof.commitment_a)
+  expect commitment_b: G1Element = g1.decompress(proof.commitment_b)
+  expect commitment_c: G1Element = g1.decompress(proof.commitment_c)
+  expect commitment_z: G1Element = g1.decompress(proof.commitment_z)
+  expect t_low: G1Element = g1.decompress(proof.t_low)
+  expect t_mid: G1Element = g1.decompress(proof.t_mid)
+  expect t_high: G1Element = g1.decompress(proof.t_high)
+  expect w_omega: G1Element = g1.decompress(proof.w_omega)
+  expect w_omega_zeta: G1Element = g1.decompress(proof.w_omega_zeta)
 
   // convert polynomial evaluations
   let a_eval: State<Scalar> = scalar.from_int(proof.a_eval)

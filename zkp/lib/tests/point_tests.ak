@@ -166,64 +166,31 @@ test test_vkey_point_decompressions() {
 // Point structure validation (proof points)
 // ---------------------------------------------------------------------------
 
-test test_proof_point_structures() {
-  when test_plonk_proof_affine.commitment_a is {
-    G1Point { x: _, y: _ } ->
-      when test_plonk_proof_affine.commitment_b is {
-        G1Point { x: _, y: _ } ->
-          when test_plonk_proof_affine.commitment_c is {
-            G1Point { x: _, y: _ } ->
-              when test_plonk_proof_affine.commitment_z is {
-                G1Point { x: _, y: _ } ->
-                  when test_plonk_proof_affine.t_low is {
-                    G1Point { x: _, y: _ } ->
-                      when test_plonk_proof_affine.t_mid is {
-                        G1Point { x: _, y: _ } ->
-                          when test_plonk_proof_affine.t_high is {
-                            G1Point { x: _, y: _ } ->
-                              when test_plonk_proof_affine.w_omega is {
-                                G1Point { x: _, y: _ } ->
-                                  when test_plonk_proof_affine.w_omega_zeta is {
-                                    G1Point { x: _, y: _ } -> True
-                                    _ -> False
-                                  }
-                                _ -> False
-                              }
-                            _ -> False
-                          }
-                        _ -> False
-                      }
-                    _ -> False
-                  }
-                _ -> False
-              }
-            _ -> False
-          }
-        _ -> False
-      }
-    _ -> False
+  and {
+    g1_on_curve(test_plonk_proof_affine.commitment_a),
+    g1_on_curve(test_plonk_proof_affine.commitment_b),
+    g1_on_curve(test_plonk_proof_affine.commitment_c),
+    g1_on_curve(test_plonk_proof_affine.commitment_z),
+    g1_on_curve(test_plonk_proof_affine.t_low),
+    g1_on_curve(test_plonk_proof_affine.t_mid),
+    g1_on_curve(test_plonk_proof_affine.t_high),
+    g1_on_curve(test_plonk_proof_affine.w_omega),
+    g1_on_curve(test_plonk_proof_affine.w_omega_zeta),
   }
-}
 
 // ---------------------------------------------------------------------------
 // Point structure validation (vkey points)
 // ---------------------------------------------------------------------------
 
 test test_vkey_point_structures() {
-  let is_g1 = fn(p) {
-    when p is {
-      G1Point { x: _, y: _ } -> True
-      _ -> False
-    }
-  }
   and {
-    is_g1(test_plonk_vkey_affine.q_m),
-    is_g1(test_plonk_vkey_affine.q_l),
-    is_g1(test_plonk_vkey_affine.q_r),
-    is_g1(test_plonk_vkey_affine.q_o),
-    is_g1(test_plonk_vkey_affine.s_sig1),
-    is_g1(test_plonk_vkey_affine.s_sig2),
-    is_g1(test_plonk_vkey_affine.s_sig3),
+    g1_on_curve(test_plonk_vkey_affine.q_m),
+    g1_on_curve(test_plonk_vkey_affine.q_l),
+    g1_on_curve(test_plonk_vkey_affine.q_r),
+    g1_on_curve(test_plonk_vkey_affine.q_o),
+    g1_on_curve(test_plonk_vkey_affine.s_sig1),
+    g1_on_curve(test_plonk_vkey_affine.s_sig2),
+    g1_on_curve(test_plonk_vkey_affine.s_sig3),
     when test_plonk_vkey_affine.x2 is {
       G2Point { x: _, y: _ } -> True
       _ -> False
@@ -233,7 +200,7 @@ test test_vkey_point_structures() {
 
 test test_simple_point_validation() {
   when simple_g1_point is {
-    G1Point { x, y: _y } -> x == x
+    G1Point { _x, y: _y } -> g1_on_curve(simple_g1_point)
     _ -> False
   }
 }
