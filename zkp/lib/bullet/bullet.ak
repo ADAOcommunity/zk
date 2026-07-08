@@ -4,6 +4,16 @@ use aiken/crypto/bls12_381/g1
 use aiken/crypto/bls12_381/scalar
 use aiken/primitive/bytearray
 
+/// Prepended to every generator derivation and transcript hash so this
+/// protocol's challenges/generators can never collide with another
+/// proof system's, even if both happened to hash the same raw bytes.
+const protocol_id: ByteArray = "adao-zkp/bulletproofs-range-proof/v1"
+
+/// Range proofs wider than this are refused: `n` drives O(n) recursion
+/// (bit decomposition, vector commitments, scalar products) both here and
+/// in `verify`, so an unbounded `n` is an unbounded compute-cost knob.
+const max_n: Int = 64
+
 pub type BulletproofVerificationKey {
   g: G1Element,
   h: G1Element,
@@ -39,33 +49,37 @@ pub type ProofBlinding {
 /// n-bit range proof. Meant to be computed once and embedded as a constant
 /// verification key, not recomputed per transaction.
 pub fn setup(n: Int) -> BulletproofVerificationKey {
-  let g = g1.generator
-  let h = g1.hash_to_group("h", "bulletproofs/base")
-  let u = g1.hash_to_group("u", "bulletproofs/base")
-  let indices = list.range(0, n - 1)
-  let g_vec =
-    list.map(
-      indices,
-      fn(i) {
-        g1.hash_to_group(
-          bytearray.from_int_big_endian(i, 4),
-          "bulletproofs/g_vec",
-        )
-      },
-    )
-  let h_vec =
-    list.map(
-      indices,
-      fn(i) {
-        g1.hash_to_group(
-          bytearray.from_int_big_endian(i, 4),
-          "bulletproofs/h_vec",
-        )
-      },
-    )
-  let g_sum = list.foldl(g_vec, g1.zero, g1.add)
-  let h_sum = list.foldl(h_vec, g1.zero, g1.add)
-  BulletproofVerificationKey { g, h, u, g_vec, h_vec, g_sum, h_sum, n }
+  if n <= 0 || n > max_n {
+    fail @"n must be between 1 and max_n"
+  } else {
+    let g = g1.generator
+    let h = g1.hash_to_group("h", bytearray.concat(protocol_id, "/base"))
+    let u = g1.hash_to_group("u", bytearray.concat(protocol_id, "/base"))
+    let indices = list.range(0, n - 1)
+    let g_vec =
+      list.map(
+        indices,
+        fn(i) {
+          g1.hash_to_group(
+            bytearray.from_int_big_endian(i, 4),
+            bytearray.concat(protocol_id, "/g_vec"),
+          )
+        },
+      )
+    let h_vec =
+      list.map(
+        indices,
+        fn(i) {
+          g1.hash_to_group(
+            bytearray.from_int_big_endian(i, 4),
+            bytearray.concat(protocol_id, "/h_vec"),
+          )
+        },
+      )
+    let g_sum = list.foldl(g_vec, g1.zero, g1.add)
+    let h_sum = list.foldl(h_vec, g1.zero, g1.add)
+    BulletproofVerificationKey { g, h, u, g_vec, h_vec, g_sum, h_sum, n }
+  }
 }
 
 /// Public Pedersen commitment to a hidden value: V = g^value * h^gamma.
@@ -244,7 +258,9 @@ pub fn verify(
   v_commit: G1Element,
   proof: BulletproofProof,
 ) -> Bool {
-  if list.length(proof.l_vec) != vk.n || list.length(proof.r_vec) != vk.n {
+  if vk.n <= 0 || vk.n > max_n {
+    False
+  } else if list.length(proof.l_vec) != vk.n || list.length(proof.r_vec) != vk.n {
     False
   } else {
     let state1 =
@@ -327,14 +343,17 @@ fn transcript_init(
 ) -> ByteArray {
   crypto.blake2b_256(
     bytearray.concat(
-      g1.compress(vk.g),
+      protocol_id,
       bytearray.concat(
-        g1.compress(vk.h),
+        g1.compress(vk.g),
         bytearray.concat(
-          g1.compress(vk.u),
+          g1.compress(vk.h),
           bytearray.concat(
-            bytearray.from_int_big_endian(vk.n, 4),
-            g1.compress(v_commit),
+            g1.compress(vk.u),
+            bytearray.concat(
+              bytearray.from_int_big_endian(vk.n, 4),
+              g1.compress(v_commit),
+            ),
           ),
         ),
       ),
