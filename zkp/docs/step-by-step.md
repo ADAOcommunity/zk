@@ -158,87 +158,130 @@ The verifier checks the validity of the proof using polynomial commitments and p
 
 # **Bulletproofs**
 
+This implementation follows the Bünz et al. (2018) Bulletproofs construction for range proofs over a Pedersen commitment, targeting the BLS12-381 curve on Cardano (Plutus V3 / Aiken). It uses the **O(n) disclosed-vectors variant**: the prover sends \( \mathbf{l}, \mathbf{r} \) in the clear rather than folding them via the recursive inner-product argument (IPA), which would reduce proof size to \( O(\log n) \) at the cost of additional implementation complexity. IPA compression is a planned future phase once a deployment target's transaction-size constraints require it.
+
 ## **1. Setup (Public Parameters Generation)**
-Bulletproofs do not require a trusted setup, but they do rely on a publicly known set of parameters.
+Bulletproofs require no trusted ceremony. All generators are derived deterministically from a public string.
 
-### **Step 1: Define the elliptic curve and generators**
-- Choose an elliptic curve \( E \) over a finite field \( \mathbb{F}_q \).
-- Select a generator \( G \) of a group of prime order \( p \) on \( E \).
-- Define a second independent generator \( H \), which is typically derived from a hash function.
+### **Step 1: Derive independent generators**
+- Set \( g \) to the BLS12-381 G1 standard generator.
+- Derive \( h \) and \( u \) via `hash_to_group` with distinct domain-separation tags under a fixed `protocol_id` string.
+- Derive generator vectors \( \mathbf{g}_{vec}[i] \) and \( \mathbf{h}_{vec}[i] \) for \( i \in [0, n) \) via `hash_to_group` with per-index payloads and separate DSTs. No party ever holds a discrete-log relationship between any two generators.
 
-### **Step 2: Commit to the range proof base**
-- Define an inner-product argument base \( G_1, G_2, \dots, G_n \) and \( H_1, H_2, \dots, H_n \).
-- The generators \( H_i \) are determined using a Fiat-Shamir heuristic to ensure security.
+### **Step 2: Precompute generator sums**
+- Store \( g_{sum} = \sum_i \mathbf{g}_{vec}[i] \) and \( h_{sum} = \sum_i \mathbf{h}_{vec}[i] \) in the verification key.
+- These avoid re-folding \( 2n \) points on every verification call.
 
-### **Step 3: Establish a Pedersen Commitment scheme**
-- The commitment scheme is defined as:
+### **Step 3: Establish the Pedersen commitment scheme**
+- The commitment to a secret value \( v \) with blinding factor \( \gamma \) is:
   \[
-  C = vG + rH
+  V = g^v \cdot h^\gamma
   \]
-  where:
-  - \( v \) is the secret value to be proven within a range,
-  - \( r \) is a blinding factor (random scalar),
-  - \( C \) is the commitment sent to the verifier.
+- \( V \) is the only public input the verifier receives about \( v \); the proof never reveals \( v \) or \( \gamma \).
+
+The verification key is computed once off-chain and embedded as a deployed constant; it must not be recomputed per transaction.
 
 ---
 
 ## **2. Proof Generation (Prover's Side)**
-The prover generates a zero-knowledge proof that a committed value lies within a specific range (e.g., \( [0, 2^n -1] \)) without revealing the actual value.
+The prover generates a zero-knowledge proof that the committed value \( v \) lies in \( [0, 2^n) \).
 
-### **Step 1: Encode the value as binary**
-- The value \( v \) is encoded as an \( n \)-bit binary vector \( \mathbf{a}_L \) where:
-  \[
-  v = \sum_{i=0}^{n-1} a_{L,i} ⋅ 2^i
-  \]
-- Construct the complement vector \( \mathbf{a}_R = \mathbf{a}_L - \mathbf{1} \).
+### **Step 1: Bit-decompose the value**
+- Encode \( v \) as an \( n \)-bit vector: \( \mathbf{a}_L[i] = \text{bit } i \text{ of } v \).
+- Set \( \mathbf{a}_R = \mathbf{a}_L - \mathbf{1} \) (component-wise).
 
-### **Step 2: Commit to the bit values**
-- Compute the commitments:
+### **Step 2: Commit to the bit vectors**
+- Sample blinding scalars \( \alpha, \rho \) and blinding vectors \( \mathbf{s}_L, \mathbf{s}_R \) (length \( n \)).
+- Compute:
   \[
-  A = \langle \mathbf{a}_L, \mathbf{G} \rangle + \langle \mathbf{a}_R, \mathbf{H} \rangle + \alpha G
-  \]
-  \[
-  S = \langle \mathbf{s}_L, \mathbf{G} \rangle + \langle \mathbf{s}_R, \mathbf{H} \rangle + \beta G
-  \]
-  where \( \alpha, \beta \) are random scalars used to ensure zero-knowledge.
-
-### **Step 3: Generate challenge scalars**
-- The verifier sends a challenge \( y, z \) (using the Fiat-Shamir heuristic).
-- The prover computes vectors \( \mathbf{l}, \mathbf{r} \) and an inner-product proof.
-
-### **Step 4: Compute the proof elements**
-- Compute the response values using challenge \( x \) (another Fiat-Shamir challenge).
-- The prover computes:
-  \[
-  T_1 = \langle \mathbf{l}, \mathbf{r} \rangle G + \gamma H
-  \]
-  and
-  \[
-  T_2 = x^2 \langle \mathbf{l}, \mathbf{r} \rangle G + \delta H
+  A = h^\alpha \cdot \mathbf{g}_{vec}^{\mathbf{a}_L} \cdot \mathbf{h}_{vec}^{\mathbf{a}_R}
+  \qquad
+  S = h^\rho \cdot \mathbf{g}_{vec}^{\mathbf{s}_L} \cdot \mathbf{h}_{vec}^{\mathbf{s}_R}
   \]
 
-- These commitments ensure that the values remain within the specified range.
+### **Step 3: Derive challenges y, z (Fiat–Shamir)**
+- Hash the transcript over \( (V, A, S) \) (with \( g, h, u, n \) bound at transcript initialisation) via `blake2b_256`.
+- Derive scalar challenges:
+  \[
+  y = \text{hash\_to\_scalar}(\text{state} \| \texttt{"y"})
+  \qquad
+  z = \text{hash\_to\_scalar}(\text{state} \| \texttt{"z"})
+  \]
 
-### **Step 5: Send the proof to the verifier**
-The prover sends the commitments and responses, including:
-- \( A, S, T_1, T_2 \),
-- Inner product proof (which uses a logarithmic number of rounds to verify the computation).
+### **Step 4: Build the linear vector polynomials**
+- Define length-\( n \) vectors (index \( i \in [0, n) \)):
+  \[
+  \mathbf{l}_0[i] = a_L[i] - z
+  \qquad
+  \mathbf{l}_1[i] = s_L[i]
+  \]
+  \[
+  \mathbf{r}_0[i] = y^i \cdot (a_R[i] + z) + z^2 \cdot 2^i
+  \qquad
+  \mathbf{r}_1[i] = y^i \cdot s_R[i]
+  \]
+- The inner product \( t(X) = \langle \mathbf{l}_0 + X\mathbf{l}_1,\; \mathbf{r}_0 + X\mathbf{r}_1 \rangle = t_0 + t_1 X + t_2 X^2 \).
+- Compute coefficients: \( t_1 = \langle \mathbf{l}_0, \mathbf{r}_1 \rangle + \langle \mathbf{l}_1, \mathbf{r}_0 \rangle \), \( t_2 = \langle \mathbf{l}_1, \mathbf{r}_1 \rangle \).
+
+### **Step 5: Commit to the polynomial coefficients**
+- Sample blinding scalars \( \tau_1, \tau_2 \). Compute:
+  \[
+  T_1 = g^{t_1} \cdot h^{\tau_1}
+  \qquad
+  T_2 = g^{t_2} \cdot h^{\tau_2}
+  \]
+
+### **Step 6: Derive challenge x (Fiat–Shamir)**
+- Extend the transcript by absorbing \( (T_1, T_2) \); derive:
+  \[
+  x = \text{hash\_to\_scalar}(\text{state} \| \texttt{"x"})
+  \]
+
+### **Step 7: Evaluate and output the proof**
+- Evaluate the polynomial at \( x \):
+  \[
+  \mathbf{l} = \mathbf{l}_0 + x \cdot \mathbf{l}_1
+  \qquad
+  \mathbf{r} = \mathbf{r}_0 + x \cdot \mathbf{r}_1
+  \]
+- Compute the blinding aggregates:
+  \[
+  \tau_x = z^2 \cdot \gamma + \tau_1 \cdot x + \tau_2 \cdot x^2
+  \qquad
+  \mu = \alpha + \rho \cdot x
+  \]
+- The proof is \( (A, S, T_1, T_2, \tau_x, \mu, \mathbf{l}, \mathbf{r}) \). Proof size is \( O(n) \) scalars (4 group elements + \( 2n + 2 \) scalars).
 
 ---
 
 ## **3. Verification (Verifier's Side)**
-The verifier checks the validity of the proof using the commitments and challenge responses.
+The verifier holds only the public inputs: the verification key and the Pedersen commitment \( V \). It never sees \( v \) or \( \gamma \).
 
-### **Step 1: Compute challenge scalars**
-- Using Fiat-Shamir heuristic, recompute \( y, z, x \).
+### **Step 1: Recompute challenge scalars**
+- Reconstruct the identical Fiat–Shamir transcript from \( (V, A, S, T_1, T_2) \) using the same staged hash construction. Derive \( y, z, x \) as the prover did.
+- Reject immediately if \( |\mathbf{l}| \neq n \) or \( |\mathbf{r}| \neq n \), or if \( y = 0 \) (singular case).
 
-### **Step 2: Verify the commitments**
-- Check that the linear constraints hold for the committed values.
-- Compute the expected inner product values and compare them against the provided proof.
+### **Step 2: Recompute derived values**
+- Compute \( \hat{t} = \langle \mathbf{l}, \mathbf{r} \rangle \) directly from the disclosed vectors (no trust required).
+- Compute the correction term:
+  \[
+  \delta(y, z) = (z - z^2) \cdot \sum_{i=0}^{n-1} y^i \;-\; z^3 \cdot \sum_{i=0}^{n-1} 2^i
+  \]
 
-### **Step 3: Verify inner product proof**
-- Use logarithmic reduction to efficiently check that the inner product argument is valid.
+### **Step 3: t-commitment check**
+Verify that \( \hat{t} \) is consistent with the committed polynomial and the Pedersen commitment \( V \):
+\[
+g^{\hat{t}} \cdot h^{\tau_x} \;=\; V^{z^2} \cdot g^{\delta(y,z)} \cdot T_1^x \cdot T_2^{x^2}
+\]
 
-### **Step 4: Accept or reject**
-- If all checks pass, accept the proof.
-- Otherwise, reject the proof as invalid.
+### **Step 4: Vector-opening check**
+Verify that \( \mathbf{l}, \mathbf{r} \) are consistent with the commitments \( A, S \). Rescale the \( h \)-generators as \( h'_i = \mathbf{h}_{vec}[i]^{y^{-i}} \) and set \( \mathbf{r}'[i] = \mathbf{r}[i] - z^2 \cdot 2^i \):
+\[
+A \cdot S^x \;=\; h^\mu \cdot \mathbf{g}_{vec}^{\mathbf{l}} \cdot (h')^{\mathbf{r}'} \cdot (g_{sum} - h_{sum})^z
+\]
+
+### **Step 5: Accept or reject**
+- If both checks hold, accept the proof.
+- If either fails, reject.
+
+Both checks together bind the proof to a genuine bit-decomposition of a value consistent with \( V \). A prover who did not honestly decompose a value in \( [0, 2^n) \) cannot satisfy both checks simultaneously for challenges they could not have predicted at commitment time (Schwartz–Zippel, Pedersen binding).
