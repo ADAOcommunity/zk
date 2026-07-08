@@ -337,6 +337,10 @@ pub fn verify(
   }
 }
 
+/// `u` is intentionally included even though the current two-check verifier
+/// does not use it. Binding `u` into every transcript hash ties the challenges
+/// to the full protocol identity — a future IPA phase that activates `u` will
+/// derive consistent challenges without a breaking change to transcript format.
 fn transcript_init(
   vk: BulletproofVerificationKey,
   v_commit: G1Element,
@@ -382,7 +386,7 @@ fn hash_to_scalar(seed: ByteArray) -> scalar.Scalar {
 fn hash_to_scalar_loop(seed: ByteArray, counter: Int) -> scalar.Scalar {
   let digest =
     crypto.blake2b_256(
-      bytearray.concat(seed, bytearray.from_int_big_endian(counter, 1)),
+      bytearray.concat(seed, bytearray.from_int_big_endian(counter, 4)),
     )
   when scalar.from_bytearray_big_endian(digest) is {
     Some(s) -> s
@@ -390,6 +394,8 @@ fn hash_to_scalar_loop(seed: ByteArray, counter: Int) -> scalar.Scalar {
   }
 }
 
+/// `scalar.scale(base, i)` is exponentiation (`base^i`), not i*base — it
+/// produces [1, base, base^2, ...] as required by the Bulletproofs protocol.
 fn powers_of(base: scalar.Scalar, count: Int) -> List<scalar.Scalar> {
   list.map(list.range(0, count - 1), fn(i) { scalar.scale(base, i) })
 }
