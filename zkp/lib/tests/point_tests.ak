@@ -4,9 +4,7 @@ use common/blst_affine.{
   G1Affine, G1Infinity, G1Point, G2Infinity, G2Point, g1_affine_compress,
   g1_on_curve, g2_affine_compress,
 }
-use tests/plonk_tests.{
-  test_plonk_proof_affine, test_plonk_vkey_affine,
-}
+use tests/plonk_tests.{test_plonk_proof_affine, test_plonk_vkey_affine}
 use tests/test_utils.{int_to_field_bytes}
 
 // ---------------------------------------------------------------------------
@@ -127,7 +125,8 @@ test test_g2_infinity_compression() {
 
 test test_known_infinity_format() {
   // Standard BLS12-381 infinity: 0xc0 followed by 47 zero bytes (48 bytes total = 96 hex chars)
-  let known_infinity = #"c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  let known_infinity =
+    #"c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
   expect _decompressed = g1.decompress(known_infinity)
   let our_infinity = g1_affine_compress(test_plonk_vkey_affine.q_c)
   known_infinity == our_infinity

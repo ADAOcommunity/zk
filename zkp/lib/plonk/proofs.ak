@@ -1,8 +1,8 @@
 use aiken/builtin.{keccak_256}
 use aiken/collection/list
 use aiken/crypto/bitwise.{State}
-use aiken/crypto/bls12_381/scalar.{Scalar, field_prime}
 use aiken/crypto/bls12_381/g1
+use aiken/crypto/bls12_381/scalar.{Scalar, field_prime}
 use common/common.{concat_and_keccak_256}
 use plonk/preinputs.{PreparedPlonkPreInputs}
 
@@ -67,7 +67,8 @@ pub fn plonk_prepare_proof(
         [proof.commitment_a, proof.commitment_b, proof.commitment_c],
       ),
     )
-  let beta: State<Scalar> = scalar.from_bytes(concat_and_keccak_256(beta_inputs))
+  let beta: State<Scalar> =
+    scalar.from_bytes(concat_and_keccak_256(beta_inputs))
   let gamma: State<Scalar> =
     scalar.from_bytes(keccak_256(scalar.to_bytes(beta)))
   let alpha: State<Scalar> =
@@ -86,7 +87,8 @@ pub fn plonk_prepare_proof(
     list.map(
       preinputs.generators,
       fn(x) {
-        let denom = scalar.mul(scalar.from_int(preinputs.n), scalar.sub(zeta, x))
+        let denom =
+          scalar.mul(scalar.from_int(preinputs.n), scalar.sub(zeta, x))
         scalar.scale(denom, field_prime - 2)
       },
     )
@@ -110,7 +112,7 @@ pub fn plonk_prepare_proof(
   let s_sig2_p: State<Scalar> = scalar.from_int(proof.s_sig2_p)
   let z_omega: State<Scalar> = scalar.from_int(proof.z_omega)
 
-  PreparedPlonkProof { 
+  PreparedPlonkProof {
     commitment_a,
     commitment_b,
     commitment_c,
@@ -126,5 +128,6 @@ pub fn plonk_prepare_proof(
     s_sig1_p,
     s_sig2_p,
     z_omega,
-    lagrange_inverses }
+    lagrange_inverses,
+  }
 }

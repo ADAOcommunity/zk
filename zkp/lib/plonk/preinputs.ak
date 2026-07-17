@@ -1,8 +1,8 @@
 use aiken/collection/list
 use aiken/crypto/bitwise.{State}
-use aiken/crypto/bls12_381/scalar.{Scalar, scale}
 use aiken/crypto/bls12_381/g1
 use aiken/crypto/bls12_381/g2
+use aiken/crypto/bls12_381/scalar.{Scalar, scale}
 
 pub type PlonkPreInputs {
   power: Int,
@@ -54,7 +54,7 @@ pub fn plonk_prepare_preinputs(
 
   PreparedPlonkPreInputs {
     n: scalar.to_int(scale(scalar.from_int(2), inputs.power)),
-    generator: generator,
+    generator,
     generators: list.map(list.range(0, n_public), fn(n) { scale(generator, n) }),
     power: inputs.power,
     k1: inputs.k1,

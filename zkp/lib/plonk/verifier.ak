@@ -226,7 +226,10 @@ pub fn verify_plonk(
 
   // verify polynomial evaluations
   let miller_loop_1 =
-    miller_loop(g1.add(proof.w_omega, g1.scale(proof.w_omega_zeta, u)), preinputs.x2)
+    miller_loop(
+      g1.add(proof.w_omega, g1.scale(proof.w_omega_zeta, u)),
+      preinputs.x2,
+    )
 
   // verify constraint satisfaction
   let miller_loop_2 =

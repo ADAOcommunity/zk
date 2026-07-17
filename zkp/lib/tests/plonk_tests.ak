@@ -1,6 +1,8 @@
 use aiken/collection/list
 use aiken/crypto/bls12_381/scalar
-use common/blst_affine.{G1Infinity, G1Point, G2Point, g1_affine_compress, g2_affine_compress}
+use common/blst_affine.{
+  G1Infinity, G1Point, G2Point, g1_affine_compress, g2_affine_compress,
+}
 use common/common.{G2Point as RawG2Point, Point}
 use plonk/preinputs.{PlonkPreInputs, plonk_prepare_preinputs}
 use plonk/proofs.{plonk_prepare_proof}
@@ -285,8 +287,7 @@ pub const test_plonk_vkey_affine: AffineVerificationKey =
     w: 28761180743467419819834788392525162889723178799021384024940474588120723734663,
   }
 
-pub const test_plonk_pub_inputs: List<Int> =
-  [63, 7]
+pub const test_plonk_pub_inputs: List<Int> = [63, 7]
 
 // ===========================================================================
 // Vkey compression tests

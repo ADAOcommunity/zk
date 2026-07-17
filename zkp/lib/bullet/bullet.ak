@@ -499,7 +499,10 @@ test range_proof_fails_tampered_tau_x() {
   let proof = generate_proof_deterministic(vk, value, gamma, "seed-5")
   let v_commit = commit_value(vk, value, gamma)
   let tampered =
-    BulletproofProof { ..proof, tau_x: scalar.add(proof.tau_x, scalar.from_int(1)) }
+    BulletproofProof {
+      ..proof,
+      tau_x: scalar.add(proof.tau_x, scalar.from_int(1)),
+    }
   !verify(vk, v_commit, tampered)
 }
 
@@ -511,7 +514,10 @@ test range_proof_fails_tampered_l_vec() {
   let v_commit = commit_value(vk, value, gamma)
   expect [first, ..rest] = proof.l_vec
   let tampered =
-    BulletproofProof { ..proof, l_vec: [scalar.add(first, scalar.from_int(1)), ..rest] }
+    BulletproofProof {
+      ..proof,
+      l_vec: [scalar.add(first, scalar.from_int(1)), ..rest],
+    }
   !verify(vk, v_commit, tampered)
 }
 
