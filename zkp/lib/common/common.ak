@@ -1,14 +1,18 @@
+use aiken/builtin.{blake2b_224}
 use aiken/collection/list
 use aiken/crypto
+use aiken/crypto/bitwise.{State}
+use aiken/crypto/bls12_381/g1
+use aiken/crypto/bls12_381/scalar.{Scalar, field_prime}
 use aiken/primitive/bytearray
 
-// Constants for BLS12-381
-pub const bls12_381_prime =
-  52435875175126190479447740508185965837690552500527637822603658699938581184513
+/// BLS12-381 base field prime p
+pub const bls12_381_base_prime: Int =
+  4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787
 
-// Additional curve constants
-pub const bls12_381_r =
-  52435875175126190479447740508185965837690552500527637822603658699938581184513
+/// (p-1)/2 for BLS12-381 field modulus, used to determine y-coordinate sort bit.
+pub const bls12_381_half_prime: Int =
+  2001204777610833696708894912867952078278441409969503942666029068062015825245418932221343814564507832018947136279893
 
 pub const bls12_381_h = 1
 
@@ -55,28 +59,32 @@ pub type VerificationError {
 }
 
 // Common utility functions for field operations
+pub fn make_scalar(a: Int) -> Field {
+  a % field_prime
+}
+
 pub fn mod_add(a: Field, b: Field) -> Field {
-  ( a + b ) % bls12_381_prime
+  ( a + b ) % field_prime
 }
 
 pub fn mod_sub(a: Field, b: Field) -> Field {
-  let result = ( a - b ) % bls12_381_prime
+  let result = ( a - b ) % field_prime
   if result < 0 {
-    result + bls12_381_prime
+    result + field_prime
   } else {
     result
   }
 }
 
 pub fn mod_mul(a: Field, b: Field) -> Field {
-  a * b % bls12_381_prime
+  a * b % field_prime
 }
 
 pub fn mod_neg(a: Field) -> Field {
   if a == 0 {
     0
   } else {
-    bls12_381_prime - a
+    field_prime - a
   }
 }
 
@@ -120,7 +128,7 @@ pub fn mod_sqrt(a: Field) -> Option<Field> {
     Some(0)
   } else {
     // For p ≡ 3 (mod 4), sqrt(a) = a^((p+1)/4) if a is a quadratic residue
-    let exp = ( bls12_381_prime + 1 ) / 4
+    let exp = ( field_prime + 1 ) / 4
     let sqrt = mod_pow(a, exp)
     // Verify the result
     if mod_mul(sqrt, sqrt) == a {
@@ -131,7 +139,7 @@ pub fn mod_sqrt(a: Field) -> Option<Field> {
   }
 }
 
-fn mod_pow(base: Field, exp: Field) -> Field {
+pub fn mod_pow(base: Field, exp: Field) -> Field {
   if exp == 0 {
     1
   } else {
@@ -153,7 +161,51 @@ fn mod_pow_loop(b, e, result) {
   }
 }
 
-// Point operations (expanding on existing ones)
+// Blake2b-224 utilities
+
+pub fn concat_and_blake2b_224(inputs: List<ByteArray>) -> ByteArray {
+  let concatenated =
+    list.foldl(inputs, #"", fn(x, acc) { bytearray.concat(acc, x) })
+  blake2b_224(concatenated)
+}
+
+pub fn concat_and_keccak_256(inputs: List<ByteArray>) -> ByteArray {
+  let concatenated =
+    list.foldl(inputs, #"", fn(x, acc) { bytearray.concat(acc, x) })
+  crypto.keccak_256(concatenated)
+}
+
+// Scalar utilities
+
+pub fn scalar_rt_bs(bs: ByteArray) -> ByteArray {
+  scalar.to_bytes(scalar.from_bytes(bs))
+}
+
+pub fn scalar_rt_bs_le(bs: ByteArray) -> ByteArray {
+  scalar.to_bytes_little_endian(scalar.from_bytes_little_endian(bs))
+}
+
+pub fn scalar_rt_int(i: Int) -> Int {
+  scalar.to_int(scalar.from_int(i))
+}
+
+pub fn scalar_sum(scalars: List<State<Scalar>>) -> State<Scalar> {
+  list.foldl(scalars, scalar.from_int(0), fn(acc, x) { scalar.add(acc, x) })
+}
+
+// G1 operations (expanding on existing ones)
+pub fn g1_sum(points: List<G1Element>) -> G1Element {
+  list.foldl(points, g1.zero, g1.add)
+}
+
+pub fn g1_from_raw(raw: List<Int>) -> Option<G1Point> {
+  when raw is {
+    [] -> None
+    [_] -> None
+    [x, y, ..] -> Some(Point { x: scalar_rt_int(x), y: scalar_rt_int(y), z: 1 })
+  }
+}
+
 pub fn g1_generator() -> G1Point {
   // BLS12-381 G1 generator coordinates
   Point {
@@ -188,7 +240,7 @@ pub fn g1_compress(p: G1Point) -> ByteArray {
     crypto.blake2b_256(#"00")
   } else {
     // Convert to affine coordinates first
-    let z_inv = mod_inv(p.z, bls12_381_prime)
+    let z_inv = mod_inv(p.z, field_prime)
     when z_inv is {
       Some(z_inv_val) -> {
         let x_affine = mod_mul(p.x, z_inv_val)
@@ -196,7 +248,7 @@ pub fn g1_compress(p: G1Point) -> ByteArray {
         // Compress point by keeping x coordinate and y's sign
         let compressed = serialize_field(x_affine)
         // Add a bit for y's sign (we'll use the last byte)
-        let is_y_negative = y_affine > bls12_381_prime / 2
+        let is_y_negative = y_affine > field_prime / 2
         if is_y_negative {
           bytearray.concat(compressed, #"01")
         } else {
@@ -226,7 +278,7 @@ pub fn g1_decompress(bytes: ByteArray) -> Option<G1Point> {
           Some(y) -> {
             // Choose the correct y value based on sign
             let final_y =
-              if is_negative && y > bls12_381_prime / 2 || !is_negative && y <= bls12_381_prime / 2 {
+              if is_negative && y > field_prime / 2 || !is_negative && y <= field_prime / 2 {
                 y
               } else {
                 mod_neg(y)
@@ -248,7 +300,7 @@ pub fn g2_compress(p: G2Point) -> ByteArray {
   } else {
     // Convert to affine coordinates first
     let (z1, z2) = p.z
-    let z_inv = mod_inv(z1, bls12_381_prime)
+    let z_inv = mod_inv(z1, field_prime)
     when z_inv is {
       Some(z_inv_val) -> {
         let z_inv_squared = fp2_square((z_inv_val, z2))
@@ -258,7 +310,7 @@ pub fn g2_compress(p: G2Point) -> ByteArray {
         let x1_bytes = serialize_field(x_affine_1)
         let x2_bytes = serialize_field(x_affine_2)
         // Add a bit for y's sign
-        let is_y_negative = y_affine_1 > bls12_381_prime / 2
+        let is_y_negative = y_affine_1 > field_prime / 2
         let flag_byte =
           if is_y_negative {
             #"01"
@@ -462,9 +514,9 @@ pub fn deserialize_field(bytes: ByteArray) -> Option<Field> {
       bytearray.foldl(
         bytes,
         0,
-        fn(result, byte) { ( result * 256 + byte ) % bls12_381_prime },
+        fn(result, byte) { ( result * 256 + byte ) % field_prime },
       )
-    if result < bls12_381_prime {
+    if result < field_prime {
       Some(result)
     } else {
       None
@@ -479,7 +531,7 @@ pub fn hash_to_field(data: ByteArray) -> Field {
   bytearray.foldl(
     hash,
     0,
-    fn(result, byte) { ( result * 256 + byte ) % bls12_381_prime },
+    fn(result, byte) { ( result * 256 + byte ) % field_prime },
   )
 }
 
@@ -489,7 +541,7 @@ pub fn hash_to_curve(data: ByteArray) -> G1Point {
   let u_squared = mod_mul(u, u)
   let u_squared_plus_1 = mod_add(u_squared, 1)
   // Calculate x = -(u^2) / (u^2 + 1) if u^2 ≠ -1
-  when mod_inv(u_squared_plus_1, bls12_381_prime) is {
+  when mod_inv(u_squared_plus_1, field_prime) is {
     Some(inv) -> {
       let x = mod_mul(mod_neg(u_squared), inv)
       // Calculate y^2 = x^3 + 4
@@ -501,7 +553,7 @@ pub fn hash_to_curve(data: ByteArray) -> G1Point {
         Some(y) -> {
           // Ensure y has the same sign as u
           let final_y =
-            if y > bls12_381_prime / 2 == ( u > bls12_381_prime / 2 ) {
+            if y > field_prime / 2 == ( u > field_prime / 2 ) {
               y
             } else {
               mod_neg(y)
@@ -615,7 +667,7 @@ pub fn is_on_curve_g1(p: G1Point) -> Bool {
     True
   } else {
     // Convert to affine coordinates
-    let z_inv = mod_inv(p.z, bls12_381_prime)
+    let z_inv = mod_inv(p.z, field_prime)
     when z_inv is {
       Some(z_inv_val) -> {
         let z_inv_squared = mod_mul(z_inv_val, z_inv_val)
@@ -638,7 +690,7 @@ pub fn is_in_g1_subgroup(p: G1Point) -> Bool {
     False
   } else {
     // Check that the point has the right order
-    let scalar_mult = g1_mul(p, bls12_381_r)
+    let scalar_mult = g1_mul(p, field_prime)
     is_infinity(scalar_mult)
   }
 }
@@ -787,7 +839,7 @@ pub fn is_on_curve_g2(p: G2Point) -> Bool {
   } else {
     // Convert to affine coordinates
     let (z1, z2) = p.z
-    let z_inv = mod_inv(z1, bls12_381_prime)
+    let z_inv = mod_inv(z1, field_prime)
     when z_inv is {
       Some(z_inv_val) -> {
         let z_inv_squared = fp2_square((z_inv_val, z2))
@@ -816,7 +868,7 @@ pub fn is_in_g2_subgroup(p: G2Point) -> Bool {
     False
   } else {
     // Check that the point has the right order
-    let scalar_mult = g2_mul(p, bls12_381_r)
+    let scalar_mult = g2_mul(p, field_prime)
     is_infinity_g2(scalar_mult)
   }
 }
