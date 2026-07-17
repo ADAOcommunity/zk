@@ -160,14 +160,25 @@ fn mod_pow_loop(b, e, result) {
 // Blake2b-224 utilities
 
 pub fn concat_and_blake2b_224(inputs: List<ByteArray>) -> ByteArray {
-  let concatenated = list.foldl(inputs, #"", bytearray.concat)
+  let concatenated =
+    list.foldl(inputs, #"", fn(x, acc) { bytearray.concat(acc, x) })
   blake2b_224(concatenated)
+}
+
+pub fn concat_and_keccak_256(inputs: List<ByteArray>) -> ByteArray {
+  let concatenated =
+    list.foldl(inputs, #"", fn(x, acc) { bytearray.concat(acc, x) })
+  crypto.keccak_256(concatenated)
 }
 
 // Scalar utilities
 
 pub fn scalar_rt_bs(bs: ByteArray) -> ByteArray {
   scalar.to_bytes(scalar.from_bytes(bs))
+}
+
+pub fn scalar_rt_bs_le(bs: ByteArray) -> ByteArray {
+  scalar.to_bytes_little_endian(scalar.from_bytes_little_endian(bs))
 }
 
 pub fn scalar_rt_int(i: Int) -> Int {

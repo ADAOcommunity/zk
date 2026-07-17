@@ -21,6 +21,7 @@ pub type PlonkPreInputs {
 
 pub type PreparedPlonkPreInputs {
   n: Int,
+  generator: State<Scalar>,
   generators: List<State<Scalar>>,
   power: Int,
   k1: State<Scalar>,
@@ -41,18 +42,19 @@ pub fn plonk_prepare_preinputs(
   generator: State<Scalar>,
   n_public: Int,
 ) -> PreparedPlonkPreInputs {
-  expect q_m: G1Element = g1.decompress(inputs.q_m)
-  expect q_l: G1Element = g1.decompress(inputs.q_l)
-  expect q_r: G1Element = g1.decompress(inputs.q_r)
-  expect q_o: G1Element = g1.decompress(inputs.q_o)
-  expect q_c: G1Element = g1.decompress(inputs.q_c)
-  expect s_sig1: G1Element = g1.decompress(inputs.s_sig1)
-  expect s_sig2: G1Element = g1.decompress(inputs.s_sig2)
-  expect s_sig3: G1Element = g1.decompress(inputs.s_sig3)
-  expect x2: G2Element = g2.decompress(inputs.x2)
+  let q_m = g1.decompress(inputs.q_m)
+  let q_l = g1.decompress(inputs.q_l)
+  let q_r = g1.decompress(inputs.q_r)
+  let q_o = g1.decompress(inputs.q_o)
+  let q_c = g1.decompress(inputs.q_c)
+  let s_sig1 = g1.decompress(inputs.s_sig1)
+  let s_sig2 = g1.decompress(inputs.s_sig2)
+  let s_sig3 = g1.decompress(inputs.s_sig3)
+  let x2 = g2.decompress(inputs.x2)
 
   PreparedPlonkPreInputs {
     n: scalar.to_int(scale(scalar.from_int(2), inputs.power)),
+    generator: generator,
     generators: list.map(list.range(0, n_public), fn(n) { scale(generator, n) }),
     power: inputs.power,
     k1: inputs.k1,

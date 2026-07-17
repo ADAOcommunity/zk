@@ -1,10 +1,9 @@
-use aiken/builtin.{blake2b_224}
+use aiken/builtin.{keccak_256}
 use aiken/collection/list
 use aiken/crypto/bitwise.{State}
-use aiken/crypto/bls12_381/scalar.{Scalar}
+use aiken/crypto/bls12_381/scalar.{Scalar, field_prime}
 use aiken/crypto/bls12_381/g1
-use aiken/primitive/bytearray
-use common/common.{concat_and_blake2b_224, scalar_rt_bs}
+use common/common.{concat_and_keccak_256}
 use plonk/preinputs.{PreparedPlonkPreInputs}
 
 pub type PlonkProof {
@@ -49,53 +48,59 @@ pub fn plonk_prepare_proof(
   pub_inputs: List<Int>,
   proof: PlonkProof,
 ) -> PreparedPlonkProof {
+  let pub_input_bytes =
+    list.map(pub_inputs, fn(x) { scalar.to_bytes(scalar.from_int(x)) })
   let beta_inputs =
-    [
-      g1.compress(preinputs.q_m),
-      g1.compress(preinputs.q_l),
-      g1.compress(preinputs.q_r),
-      g1.compress(preinputs.q_o),
-      g1.compress(preinputs.q_c),
-      g1.compress(preinputs.s_sig1),
-      g1.compress(preinputs.s_sig2),
-      g1.compress(preinputs.s_sig3),
-      list.foldl(
-        pub_inputs,
-        #"",
-        fn(a, b) { bytearray.concat(b, bytearray.from_int_big_endian(a, 32)) },
+    list.concat(
+      [
+        g1.compress(preinputs.q_m),
+        g1.compress(preinputs.q_l),
+        g1.compress(preinputs.q_r),
+        g1.compress(preinputs.q_o),
+        g1.compress(preinputs.q_c),
+        g1.compress(preinputs.s_sig1),
+        g1.compress(preinputs.s_sig2),
+        g1.compress(preinputs.s_sig3),
+      ],
+      list.concat(
+        pub_input_bytes,
+        [proof.commitment_a, proof.commitment_b, proof.commitment_c],
       ),
-      proof.commitment_a,
-      proof.commitment_b,
-      proof.commitment_c,
-    ]
-  let beta = scalar_rt_bs(concat_and_blake2b_224(beta_inputs))
-  let gamma = scalar_rt_bs(blake2b_224(beta))
-  let alpha =
-    scalar_rt_bs(concat_and_blake2b_224([beta, gamma, proof.commitment_z]))
-  let zeta =
+    )
+  let beta: State<Scalar> = scalar.from_bytes(concat_and_keccak_256(beta_inputs))
+  let gamma: State<Scalar> =
+    scalar.from_bytes(keccak_256(scalar.to_bytes(beta)))
+  let alpha: State<Scalar> =
     scalar.from_bytes(
-      concat_and_blake2b_224([alpha, proof.t_low, proof.t_mid, proof.t_high]),
+      concat_and_keccak_256(
+        [scalar.to_bytes(beta), scalar.to_bytes(gamma), proof.commitment_z],
+      ),
+    )
+  let zeta: State<Scalar> =
+    scalar.from_bytes(
+      concat_and_keccak_256(
+        [scalar.to_bytes(alpha), proof.t_low, proof.t_mid, proof.t_high],
+      ),
     )
   let lagrange_inverses =
     list.map(
       preinputs.generators,
       fn(x) {
-        scalar.neg(
-          scalar.mul(scalar.from_int(preinputs.n), scalar.sub(zeta, x)),
-        )
+        let denom = scalar.mul(scalar.from_int(preinputs.n), scalar.sub(zeta, x))
+        scalar.scale(denom, field_prime - 2)
       },
     )
 
   // uncompress the proof commitments
-  expect commitment_a: G1Element = g1.decompress(proof.commitment_a)
-  expect commitment_b: G1Element = g1.decompress(proof.commitment_b)
-  expect commitment_c: G1Element = g1.decompress(proof.commitment_c)
-  expect commitment_z: G1Element = g1.decompress(proof.commitment_z)
-  expect t_low: G1Element = g1.decompress(proof.t_low)
-  expect t_mid: G1Element = g1.decompress(proof.t_mid)
-  expect t_high: G1Element = g1.decompress(proof.t_high)
-  expect w_omega: G1Element = g1.decompress(proof.w_omega)
-  expect w_omega_zeta: G1Element = g1.decompress(proof.w_omega_zeta)
+  let commitment_a = g1.decompress(proof.commitment_a)
+  let commitment_b = g1.decompress(proof.commitment_b)
+  let commitment_c = g1.decompress(proof.commitment_c)
+  let commitment_z = g1.decompress(proof.commitment_z)
+  let t_low = g1.decompress(proof.t_low)
+  let t_mid = g1.decompress(proof.t_mid)
+  let t_high = g1.decompress(proof.t_high)
+  let w_omega = g1.decompress(proof.w_omega)
+  let w_omega_zeta = g1.decompress(proof.w_omega_zeta)
 
   // convert polynomial evaluations
   let a_eval: State<Scalar> = scalar.from_int(proof.a_eval)

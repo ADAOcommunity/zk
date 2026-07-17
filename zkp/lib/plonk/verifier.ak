@@ -1,12 +1,11 @@
-use aiken/builtin.{blake2b_224}
+use aiken/builtin.{keccak_256}
 use aiken/collection/list
 use aiken/crypto/bitwise.{State}
 use aiken/crypto/bls12_381/g1
 use aiken/crypto/bls12_381/g2
 use aiken/crypto/bls12_381/pairing.{final_exponentiation, miller_loop}
-use aiken/crypto/bls12_381/scalar.{Scalar, field_prime, scale2}
-use aiken/primitive/bytearray
-use common/common.{concat_and_blake2b_224, g1_sum, scalar_sum}
+use aiken/crypto/bls12_381/scalar.{Scalar, scale2}
+use common/common.{concat_and_keccak_256, g1_sum, scalar_sum}
 use plonk/preinputs.{PreparedPlonkPreInputs}
 use plonk/proofs.{PreparedPlonkProof}
 
@@ -40,60 +39,45 @@ pub fn verify_plonk(
   let w_all: List<State<Scalar>> =
     list.map(pub_inputs, fn(x) { scalar.neg(scalar.from_int(x)) })
 
-  // extract generator elements from trusted setup
-  expect Some(gen_tail) = list.tail(preinputs.generators)
-  expect Some(gen_2nd) = list.head(gen_tail)
+  // w (root of unity), used directly in the pairing check
+  let gen_w = preinputs.generator
 
   // define scalar constants
   let scalar1: State<Scalar> = scalar.from_int(1)
 
-  // I guess we don't need to decompress the generators? The aiken documentation is not clear on this.
-  // let g1_generator = g1.decompress(g1.generator)
-  // let g2_generator = g2.decompress(g2.generator)
-  //
-  // compute Fiat-Shamir challenges
+  // compute Fiat-Shamir challenges (BE encoding, keccak-256, all pub inputs)
+  // matching snarkjs's keccak256-compressed transcript variant
+  let pub_input_bytes =
+    list.map(pub_inputs, fn(x) { scalar.to_bytes(scalar.from_int(x)) })
   let beta: State<Scalar> =
     scalar.from_bytes(
-      concat_and_blake2b_224(
-        [
-          q_m,
-          q_l,
-          q_r,
-          q_o,
-          q_c,
-          s_sig1,
-          s_sig2,
-          s_sig3,
-          list.foldl(
-            pub_inputs,
-            #"",
-            fn(a, b) {
-              bytearray.concat(b, bytearray.from_int_big_endian(a, 32))
-            },
+      concat_and_keccak_256(
+        list.concat(
+          [q_m, q_l, q_r, q_o, q_c, s_sig1, s_sig2, s_sig3],
+          list.concat(
+            pub_input_bytes,
+            [bs_commitment_a, bs_commitment_b, bs_commitment_c],
           ),
-          bs_commitment_a,
-          bs_commitment_b,
-          bs_commitment_c,
-        ],
+        ),
       ),
     )
   let gamma: State<Scalar> =
-    scalar.from_bytes(blake2b_224(scalar.to_bytes(beta)))
+    scalar.from_bytes(keccak_256(scalar.to_bytes(beta)))
   let alpha: State<Scalar> =
     scalar.from_bytes(
-      concat_and_blake2b_224(
+      concat_and_keccak_256(
         [scalar.to_bytes(beta), scalar.to_bytes(gamma), bs_commitment_z],
       ),
     )
   let zeta: State<Scalar> =
     scalar.from_bytes(
-      concat_and_blake2b_224(
+      concat_and_keccak_256(
         [scalar.to_bytes(alpha), bs_t_low, bs_t_mid, bs_t_high],
       ),
     )
   let v: State<Scalar> =
     scalar.from_bytes(
-      concat_and_blake2b_224(
+      concat_and_keccak_256(
         [
           scalar.to_bytes(zeta),
           scalar.to_bytes(proof.a_eval),
@@ -106,12 +90,10 @@ pub fn verify_plonk(
       ),
     )
   let u: State<Scalar> =
-    scalar.from_bytes(
-      concat_and_blake2b_224([bs_w_omega, bs_w_omega_zeta]),
-    )
+    scalar.from_bytes(concat_and_keccak_256([bs_w_omega, bs_w_omega_zeta]))
 
   // compute powers of zeta for polynomial evaluation
-  let pow2_zeta_p: State<Scalar> = scale2(zeta, field_prime)
+  let pow2_zeta_p: State<Scalar> = scale2(zeta, preinputs.power)
   let pow2_zeta_p_minus_1: State<Scalar> = scalar.sub(pow2_zeta_p, scalar1)
 
   // calculate lagrange polynomials
@@ -252,7 +234,7 @@ pub fn verify_plonk(
       g1.add(
         g1.add(
           g1.scale(proof.w_omega, zeta),
-          g1.scale(proof.w_omega_zeta, scalar.mul(u, scalar.mul(zeta, gen_2nd))),
+          g1.scale(proof.w_omega_zeta, scalar.mul(u, scalar.mul(zeta, gen_w))),
         ),
         g1.sub(batched_polynomial_commitments, group_encoded_batch_eval),
       ),
@@ -263,17 +245,18 @@ pub fn verify_plonk(
 
   // verify lagrange polynomial inverses
   let lagrange_check =
-    scalar_sum(
+    list.all(
       list.map2(
         proof.lagrange_inverses,
         preinputs.generators,
-        fn(x, y) {
+        fn(inv, gen) {
           scalar.mul(
-            x,
-            scalar.mul(scalar.from_int(preinputs.n), scalar.sub(zeta, y)),
-          )
+            inv,
+            scalar.mul(scalar.from_int(preinputs.n), scalar.sub(zeta, gen)),
+          ) == scalar.from_int(1)
         },
       ),
-    ) == scalar.from_int(1)
+      fn(b) { b },
+    )
   final_verification && lagrange_check
 }

@@ -2,7 +2,7 @@ use aiken/crypto/bls12_381/g1
 use aiken/primitive/bytearray
 use common/blst_affine.{
   G1Affine, G1Infinity, G1Point, G2Infinity, G2Point, g1_affine_compress,
-  g2_affine_compress,
+  g1_on_curve, g2_affine_compress,
 }
 use tests/plonk_tests.{
   test_plonk_proof_affine, test_plonk_vkey_affine,
@@ -166,6 +166,7 @@ test test_vkey_point_decompressions() {
 // Point structure validation (proof points)
 // ---------------------------------------------------------------------------
 
+test test_proof_point_structures() {
   and {
     g1_on_curve(test_plonk_proof_affine.commitment_a),
     g1_on_curve(test_plonk_proof_affine.commitment_b),
@@ -177,6 +178,7 @@ test test_vkey_point_decompressions() {
     g1_on_curve(test_plonk_proof_affine.w_omega),
     g1_on_curve(test_plonk_proof_affine.w_omega_zeta),
   }
+}
 
 // ---------------------------------------------------------------------------
 // Point structure validation (vkey points)
@@ -200,7 +202,7 @@ test test_vkey_point_structures() {
 
 test test_simple_point_validation() {
   when simple_g1_point is {
-    G1Point { _x, y: _y } -> g1_on_curve(simple_g1_point)
+    G1Point { .. } -> g1_on_curve(simple_g1_point)
     _ -> False
   }
 }
