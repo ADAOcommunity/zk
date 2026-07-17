@@ -1,7 +1,8 @@
 use aiken/collection/list
 use aiken/crypto
+use aiken/crypto/bitwise.{State}
 use aiken/crypto/bls12_381/g1
-use aiken/crypto/bls12_381/scalar
+use aiken/crypto/bls12_381/scalar.{Scalar}
 use aiken/primitive/bytearray
 
 /// Prepended to every generator derivation and transcript hash so this
@@ -30,19 +31,19 @@ pub type BulletproofProof {
   s: G1Element,
   t1: G1Element,
   t2: G1Element,
-  tau_x: scalar.Scalar,
-  mu: scalar.Scalar,
-  l_vec: List<scalar.Scalar>,
-  r_vec: List<scalar.Scalar>,
+  tau_x: State<Scalar>,
+  mu: State<Scalar>,
+  l_vec: List<State<Scalar>>,
+  r_vec: List<State<Scalar>>,
 }
 
 pub type ProofBlinding {
-  alpha: scalar.Scalar,
-  rho: scalar.Scalar,
-  tau1: scalar.Scalar,
-  tau2: scalar.Scalar,
-  s_l: List<scalar.Scalar>,
-  s_r: List<scalar.Scalar>,
+  alpha: State<Scalar>,
+  rho: State<Scalar>,
+  tau1: State<Scalar>,
+  tau2: State<Scalar>,
+  s_l: List<State<Scalar>>,
+  s_r: List<State<Scalar>>,
 }
 
 /// Derive a deterministic, nothing-up-my-sleeve set of generators for an
@@ -86,9 +87,9 @@ pub fn setup(n: Int) -> BulletproofVerificationKey {
 pub fn commit_value(
   vk: BulletproofVerificationKey,
   value: Int,
-  gamma: scalar.Scalar,
+  gamma: State<Scalar>,
 ) -> G1Element {
-  expect Some(value_scalar) = scalar.new(value)
+  let value_scalar = scalar.from_int(value)
   g1.add(g1.scale(vk.g, value_scalar), g1.scale(vk.h, gamma))
 }
 
@@ -98,7 +99,7 @@ pub fn commit_value(
 pub fn generate_proof(
   vk: BulletproofVerificationKey,
   value: Int,
-  gamma: scalar.Scalar,
+  gamma: State<Scalar>,
   blinding: ProofBlinding,
 ) -> BulletproofProof {
   if value < 0 || value >= pow2(vk.n) {
@@ -113,7 +114,7 @@ pub fn generate_proof(
 pub fn generate_proof_deterministic(
   vk: BulletproofVerificationKey,
   value: Int,
-  gamma: scalar.Scalar,
+  gamma: State<Scalar>,
   seed: ByteArray,
 ) -> BulletproofProof {
   generate_proof(vk, value, gamma, derive_blinding(seed, vk.n))
@@ -122,7 +123,7 @@ pub fn generate_proof_deterministic(
 fn generate_proof_unchecked(
   vk: BulletproofVerificationKey,
   value: Int,
-  gamma: scalar.Scalar,
+  gamma: State<Scalar>,
   blinding: ProofBlinding,
 ) -> BulletproofProof {
   if list.length(blinding.s_l) != vk.n || list.length(blinding.s_r) != vk.n {
@@ -130,7 +131,7 @@ fn generate_proof_unchecked(
   } else {
     let bits = bits_of(value, vk.n)
     let a_l = list.map(bits, scalar_from_bit)
-    let a_r = list.map(a_l, fn(ai) { scalar.sub(ai, scalar.one) })
+    let a_r = list.map(a_l, fn(ai) { scalar.sub(ai, scalar.from_int(1)) })
 
     let v_commit = commit_value(vk, value, gamma)
 
@@ -153,7 +154,7 @@ fn generate_proof_unchecked(
     let y = hash_to_scalar(bytearray.concat(state1, "y"))
     let z = hash_to_scalar(bytearray.concat(state1, "z"))
 
-    let two = scalar.add(scalar.one, scalar.one)
+    let two = scalar.add(scalar.from_int(1), scalar.from_int(1))
     let z2 = scalar.mul(z, z)
     let y_pow = powers_of(y, vk.n)
     let two_pow = powers_of(two, vk.n)
@@ -213,8 +214,8 @@ fn generate_proof_unchecked(
 
 /// Named helper (not an inline lambda) — a bare bit (0/1) is always a valid
 /// field element, so this cannot fail in practice.
-fn scalar_from_bit(b: Int) -> scalar.Scalar {
-  expect Some(s) = scalar.new(b)
+fn scalar_from_bit(b: Int) -> State<Scalar> {
+  let s = scalar.from_int(b)
   s
 }
 
@@ -273,7 +274,7 @@ pub fn verify(
     when scalar.recip(y) is {
       None -> False
       Some(y_inv) -> {
-        let two = scalar.add(scalar.one, scalar.one)
+        let two = scalar.add(scalar.from_int(1), scalar.from_int(1))
         let y_pow = powers_of(y, vk.n)
         let two_pow = powers_of(two, vk.n)
         let sum_y = scalar_sum(y_pow)
@@ -379,37 +380,39 @@ fn transcript_absorb2(
 /// interpreted as a big-endian integer lands outside `field_prime` (~45% of
 /// 2^256) about 55% of the time, so a single-shot hash-to-scalar traps
 /// unacceptably often; retry with an incrementing counter instead.
-fn hash_to_scalar(seed: ByteArray) -> scalar.Scalar {
+fn hash_to_scalar(seed: ByteArray) -> State<Scalar> {
   hash_to_scalar_loop(seed, 0)
 }
 
-fn hash_to_scalar_loop(seed: ByteArray, counter: Int) -> scalar.Scalar {
+fn hash_to_scalar_loop(seed: ByteArray, counter: Int) -> State<Scalar> {
   let digest =
     crypto.blake2b_256(
       bytearray.concat(seed, bytearray.from_int_big_endian(counter, 4)),
     )
-  when scalar.from_bytearray_big_endian(digest) is {
-    Some(s) -> s
-    None -> hash_to_scalar_loop(seed, counter + 1)
+  let n = bytearray.to_int_big_endian(digest)
+  if n < scalar.field_prime {
+    scalar.from_int(n)
+  } else {
+    hash_to_scalar_loop(seed, counter + 1)
   }
 }
 
 /// `scalar.scale(base, i)` is exponentiation (`base^i`), not i*base — it
 /// produces [1, base, base^2, ...] as required by the Bulletproofs protocol.
-fn powers_of(base: scalar.Scalar, count: Int) -> List<scalar.Scalar> {
+fn powers_of(base: State<Scalar>, count: Int) -> List<State<Scalar>> {
   list.map(list.range(0, count - 1), fn(i) { scalar.scale(base, i) })
 }
 
-fn scalar_sum(vec: List<scalar.Scalar>) -> scalar.Scalar {
-  list.foldl(vec, scalar.zero, scalar.add)
+fn scalar_sum(vec: List<State<Scalar>>) -> State<Scalar> {
+  list.foldl(vec, scalar.from_int(0), scalar.add)
 }
 
 fn scalar_inner_product(
-  l: List<scalar.Scalar>,
-  r: List<scalar.Scalar>,
-) -> scalar.Scalar {
+  l: List<State<Scalar>>,
+  r: List<State<Scalar>>,
+) -> State<Scalar> {
   when (l, r) is {
-    ([], []) -> scalar.zero
+    ([], []) -> scalar.from_int(0)
     ([x, ..xs], [y, ..ys]) ->
       scalar.add(scalar.mul(x, y), scalar_inner_product(xs, ys))
     (_, _) -> fail @"vector length mismatch"
@@ -417,7 +420,7 @@ fn scalar_inner_product(
 }
 
 fn vector_commit(
-  scalars: List<scalar.Scalar>,
+  scalars: List<State<Scalar>>,
   points: List<G1Element>,
 ) -> G1Element {
   when (scalars, points) is {
@@ -455,7 +458,7 @@ test setup_smoke() {
 
 test range_proof_valid() {
   let vk = setup(8)
-  expect Some(gamma) = scalar.new(12345)
+  let gamma = scalar.from_int(12345)
   let value = 200
   let proof = generate_proof_deterministic(vk, value, gamma, "seed-1")
   let v_commit = commit_value(vk, value, gamma)
@@ -464,7 +467,7 @@ test range_proof_valid() {
 
 test range_proof_valid_zero() {
   let vk = setup(8)
-  expect Some(gamma) = scalar.new(777)
+  let gamma = scalar.from_int(777)
   let value = 0
   let proof = generate_proof_deterministic(vk, value, gamma, "seed-2")
   let v_commit = commit_value(vk, value, gamma)
@@ -473,7 +476,7 @@ test range_proof_valid_zero() {
 
 test range_proof_valid_max() {
   let vk = setup(8)
-  expect Some(gamma) = scalar.new(9999)
+  let gamma = scalar.from_int(9999)
   let value = 255
   let proof = generate_proof_deterministic(vk, value, gamma, "seed-3")
   let v_commit = commit_value(vk, value, gamma)
@@ -482,7 +485,7 @@ test range_proof_valid_max() {
 
 test range_proof_fails_wrong_commitment() {
   let vk = setup(8)
-  expect Some(gamma) = scalar.new(12345)
+  let gamma = scalar.from_int(12345)
   let value = 200
   let proof = generate_proof_deterministic(vk, value, gamma, "seed-4")
   let wrong_commit = commit_value(vk, value + 1, gamma)
@@ -491,30 +494,30 @@ test range_proof_fails_wrong_commitment() {
 
 test range_proof_fails_tampered_tau_x() {
   let vk = setup(8)
-  expect Some(gamma) = scalar.new(12345)
+  let gamma = scalar.from_int(12345)
   let value = 200
   let proof = generate_proof_deterministic(vk, value, gamma, "seed-5")
   let v_commit = commit_value(vk, value, gamma)
   let tampered =
-    BulletproofProof { ..proof, tau_x: scalar.add(proof.tau_x, scalar.one) }
+    BulletproofProof { ..proof, tau_x: scalar.add(proof.tau_x, scalar.from_int(1)) }
   !verify(vk, v_commit, tampered)
 }
 
 test range_proof_fails_tampered_l_vec() {
   let vk = setup(8)
-  expect Some(gamma) = scalar.new(12345)
+  let gamma = scalar.from_int(12345)
   let value = 200
   let proof = generate_proof_deterministic(vk, value, gamma, "seed-6")
   let v_commit = commit_value(vk, value, gamma)
   expect [first, ..rest] = proof.l_vec
   let tampered =
-    BulletproofProof { ..proof, l_vec: [scalar.add(first, scalar.one), ..rest] }
+    BulletproofProof { ..proof, l_vec: [scalar.add(first, scalar.from_int(1)), ..rest] }
   !verify(vk, v_commit, tampered)
 }
 
 test range_proof_fails_wrong_vector_length() {
   let vk = setup(8)
-  expect Some(gamma) = scalar.new(12345)
+  let gamma = scalar.from_int(12345)
   let value = 200
   let proof = generate_proof_deterministic(vk, value, gamma, "seed-7")
   let v_commit = commit_value(vk, value, gamma)
@@ -525,7 +528,7 @@ test range_proof_fails_wrong_vector_length() {
 
 test generate_proof_rejects_out_of_range() fail {
   let vk = setup(8)
-  expect Some(gamma) = scalar.new(1)
+  let gamma = scalar.from_int(1)
   let blinding = derive_blinding("seed-8", vk.n)
   let proof = generate_proof(vk, 256, gamma, blinding)
   list.length(proof.l_vec) == vk.n
@@ -533,7 +536,7 @@ test generate_proof_rejects_out_of_range() fail {
 
 test range_proof_fails_out_of_range_bypassing_guard() {
   let vk = setup(8)
-  expect Some(gamma) = scalar.new(555)
+  let gamma = scalar.from_int(555)
   let value = 256
   let blinding = derive_blinding("seed-9", vk.n)
   let proof = generate_proof_unchecked(vk, value, gamma, blinding)

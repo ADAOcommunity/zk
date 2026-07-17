@@ -1,12 +1,5 @@
 use aiken/primitive/bytearray
-
-/// BLS12-381 base field prime p
-const bls12_381_base_prime: Int =
-  4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787
-
-/// (p-1)/2 for BLS12-381 field modulus, used to determine y-coordinate sort bit.
-const bls12_381_half_prime: Int =
-  2001204777610833696708894912867952078278441409969503942666029068062015825245418932221343814564507832018947136279893
+use common/common.{bls12_381_base_prime, bls12_381_half_prime}
 
 /// Affine representation of a point on the BLS12-381 G1 curve
 pub type G1Affine {
