@@ -8,13 +8,26 @@ The Aiken ZKP Standards Library takes a pragmatic approach to implementing zero-
 
 This implementation is designed for Plutus v3, leveraging its built-in BLS12-381 curve functions to ensure efficient and secure verification of ZKPs. It emphasizes clarity and maintainability, making it suitable for educational/demonstrative purposes without sacrificing security.
 
-## Targeted Features
+### Implemented
 
-### Groth16
+All three verifiers are functional, unit-tested, and build cleanly (`aiken check` / `aiken build`, 37/37 tests passing as of this writing). Each is **verification-only**: proof generation, circuit compilation, and (for Groth16/PLONK) trusted setup are assumed to happen off-chain, using external tooling this library does not provide. Full architecture, security arguments, and known limitations for each are written up in [`zkp/docs/`](./zkp/docs).
 
-Status: Complete
+#### Groth16
 
-The Groth16 implementation is largely based on Modulo-P's [ak-381](https://github.com/Modulo-P/ak-381), with some ideas taken from [zarassh's implementation](https://github.com/tarassh/zkSNARK-under-the-hood/blob/main/groth16.py) and an emphasis on explicitness and clarity. This should make this implementation ideal for learning, or for further modification.
+- Generic Groth16 proof verifier ([`zkp/lib/groth`](./zkp/lib/groth)) on native BLS12-381 pairing builtins
+- Tested against externally-generated proof/verification-key fixtures, both accepting valid proofs and rejecting tampered ones
+- [Implementation report](./zkp/docs/groth16-implementation-report.md)
+
+#### Plonk
+
+- Generic Plonk proof verifier ([`zkp/lib/plonk`](./zkp/lib/plonk)) with a batched KZG opening and a Keccak-256 Fiat–Shamir transcript matching the SnarkJS convention
+- Tested against an externally-generated proof/verification-key fixture, including rejection of tampered proofs and mismatched public inputs
+- [Implementation report](./zkp/docs/plonk-implementation-report.md)
+
+#### Bullet Proofs
+
+- Generic Bulletproofs range-proof verifier _and_ reference prover ([`zkp/lib/bullet`](./zkp/lib/bullet)) — the only one of the three with no trusted setup, so this library owns both sides and tests them together with no external fixtures needed
+- [Implementation report](./zkp/docs/bulletproofs-implementation-report.md)
 
 Currently, the Groth16 module includes:
 
@@ -58,6 +71,21 @@ The Bulletproofs implementation is in the early stages, with a focus on building
 
 - **Marlin**: Preprocessing zkSNARKs with Universal and Updatable SRS
 - **Plonky2**: Advanced recursive proof composition
+
+## Implementation
+
+- Leverages PlutusV3's BLS12-381 curve builtin functions
+- Focuses on efficient verification
+- Maintains strong security guarantees
+- See the per-protocol implementation reports in [`zkp/docs/`](./zkp/docs) for details
+
+## Getting Started
+
+### Prerequisites
+
+- Aiken development environment
+- Familiarity with ZKP systems
+- Understanding of Cardano smart contracts
 
 ## Contributing
 
