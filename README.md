@@ -10,7 +10,7 @@ This implementation is designed for Plutus v3, leveraging its built-in BLS12-381
 
 ## Status
 
-All three verifiers are functional, unit-tested, and build cleanly (`aiken check` / `aiken build`, 37/37 tests passing as of this writing). Each is **verification-only**: proof generation, circuit compilation, and (for Groth16/PLONK) trusted setup are assumed to happen off-chain, using external tooling this library does not provide. Full architecture, security arguments, and known limitations for each are written up in [`zkp/docs/`](./zkp/docs).
+All three verifiers are functional, unit-tested, and build cleanly (`aiken check` / `aiken build`, 64/64 tests passing). Each is **verification-only**: proof generation, circuit compilation, and (for Groth16/PLONK) trusted setup are assumed to happen off-chain, using external tooling this library does not provide. Full architecture, security arguments, and known limitations for each are written up in [`zkp/docs/`](./zkp/docs).
 
 ### Groth16
 
