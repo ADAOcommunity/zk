@@ -7,6 +7,8 @@
   - `aiken fmt` clean
   - `aiken build` succeeds
 
+> **Update, 2026-11:** `raw.ak` has been removed, following the recommendation in §8. Nothing in the package called it, and its projective test vectors weren't used by any test. Use `raw_affine.ak` or compressed bytes. The rest of this report describes the module as it was when written.
+
 ## 1. Overview
 
 This module implements a PLONK zk-SNARK verifier over the BLS12-381 curve, as one of three zero-knowledge proof systems in this repository's `zkp` package for Cardano smart contracts (Aiken, targeting Plutus V3). Given a universal-but-still-trusted verification key, a proof, and a list of public inputs, it checks the standard PLONK gate/permutation/quotient identity via a batched KZG opening, using a Keccak-256 Fiat–Shamir transcript matching the `snarkjs`-style compressed-commitment variant of the protocol.
@@ -102,7 +104,7 @@ Twelve tests in `tests/plonk_tests.ak` exercise this module directly, against a 
 
 - **No trusted-setup tooling.** This module consumes `x2` (and the rest of the verification key) but has no way to generate or attest to a universal SRS; that must come from an external ceremony (e.g. Perpetual Powers of Tau plus a circuit-specific phase 2) this package neither runs nor audits.
 - **No on-chain prover, by design (§5).** Proof generation, circuit compilation, and preprocessing are all out of scope; a production integration needs its own off-chain PLONK toolchain feeding this verifier.
-- **`raw.ak`'s legacy compression path carries more risk than `raw_affine.ak`'s (§5).** New integrations should prefer `raw_affine.ak` or pre-compressed bytes; `raw.ak` should be revalidated against `common.ak`'s field-arithmetic correctness, or retired, before further use.
+- **`raw.ak`'s legacy compression path carries more risk than `raw_affine.ak`'s (§5).** New integrations should prefer `raw_affine.ak` or pre-compressed bytes; `raw.ak` should be revalidated against `common.ak`'s field-arithmetic correctness, or retired, before further use. *(Retired 2026-11.)*
 - **Execution-unit cost is only measured at `n_public = 2`.** This is the most expensive verifier in the package per call already; larger public-input counts should be benchmarked before use in a real deployment.
 - **No on-chain entry point yet.** Like the other two modules in this package, how a validator obtains and trusts a given verification key/proof pair (datum/redeemer wiring) is separate, follow-on work.
 - **No cross-implementation interoperability testing beyond one fixture.** The transcript and batching scheme are documented as matching a `snarkjs`-style variant, but only one externally-produced proof has been used to validate that against this implementation; broader test vectors are future work.
