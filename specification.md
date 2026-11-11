@@ -30,21 +30,21 @@ The library's scope has been carefully defined through a systematic evaluation p
 
 ### Delivered Features
 
-All three verifiers below are implemented, unit-tested (37/37 tests passing, both positive and negative cases), and build cleanly under `aiken check`/`aiken build`. Each is **verification-only**: none of the three includes a proof-generation toolchain, and Groth16/Plonk additionally require a trusted-setup ceremony (circuit-specific and universal, respectively) that this library does not run or provide. Full architecture, design rationale, and security arguments for each are written up in `zkp/docs/`.
+All three verifiers below are implemented, covered by unit and property-based tests (64/64 tests passing, both positive and negative cases), and build cleanly under `aiken check`/`aiken build`. Each is **verification-only**: none of the three includes a proof-generation toolchain, and Groth16/Plonk additionally require a trusted-setup ceremony (circuit-specific and universal, respectively) that this library does not run or provide. Full architecture, design rationale, and security arguments for each are written up in `zkp/docs/`.
 
 #### Groth16
 - A generic Groth16 proof verifier in Aiken (`zkp/lib/groth`) that accepts any circuit-specific verification key and proof — including ones produced by an external circom + SnarkJS toolchain — without this library needing any knowledge of the circuit itself
-- A test suite verifying real, externally-generated Groth16 proofs, and correctly rejecting a tampered one
+- A test suite verifying real, externally-generated Groth16 proofs, and correctly rejecting a tampered one, plus property-based tests that any changed public input or replaced proof point is rejected
 - See `zkp/docs/groth16-implementation-report.md`
 
 #### Plonk
 - A generic Plonk proof verifier in Aiken (`zkp/lib/plonk`), including a batched KZG opening and a Keccak-256 Fiat–Shamir transcript compatible with SnarkJS's Plonk verifier convention
-- A test suite verifying a real, externally-generated Plonk proof, and correctly rejecting both a tampered proof and a mismatched public-input list
+- A test suite verifying a real, externally-generated Plonk proof, and correctly rejecting both a tampered proof and a mismatched public-input list, plus property-based tests that any changed public input or evaluation scalar is rejected
 - See `zkp/docs/plonk-implementation-report.md`
 
 #### Bulletproofs
 - A generic Bulletproofs range-proof verifier *and* reference prover in Aiken (`zkp/lib/bullet`) — the only one of the three with no trusted setup, so this library implements and tests both sides directly, with no external fixtures required
-- A test suite covering valid proofs, boundary values (0 and `2^n - 1`), and multiple tampering/rejection cases
+- A test suite covering valid proofs, boundary values (0 and `2^n - 1`), and multiple tampering/rejection cases, plus property-based tests that every in-range value can be proven and that tampered proofs and other commitments are rejected
 - See `zkp/docs/bulletproofs-implementation-report.md`
 
 ### Non-Committed / Aspirational Features

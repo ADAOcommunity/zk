@@ -3,7 +3,7 @@
 - **Module:** `zkp/lib/groth/groth.ak`
 - **Status:** Functional, tested, unaudited
 - **Test results:**
-  - `aiken check` 3/3 (part of 37/37 across the package)
+  - `aiken check` 3/3 in `tests/groth_tests`, plus 6/6 property and known-issue tests in `tests/groth_props` (part of 64/64 across the package)
   - `aiken fmt` clean
   - `aiken build` succeeds
 
@@ -72,7 +72,7 @@ Because decompression goes through the native builtins, every `G1Element`/`G2Ele
 
 ## 7. Testing and verification
 
-Three tests exercise this module, alongside the Bulletproofs and PLONK suites in the same package:
+Three unit tests in `tests/groth_tests.ak` exercise this module against external fixtures:
 
 | Test | Verifies |
 |---|---|
@@ -80,13 +80,15 @@ Three tests exercise this module, alongside the Bulletproofs and PLONK suites in
 | `groth_verify_fail_1` | A proof with `A` and `C` swapped is rejected (`test ... fail`) |
 | `groth_verify_pass_2` | A second genuine proof, different public inputs, same verification key, verifies |
 
-All three tests measure identically: ~66.9K memory units and ~2.79B CPU units per `verify_compressed` call - comfortably inside Cardano's per-transaction execution budget, and the cheapest of this package's three verifiers by a wide margin, as expected given Groth16's constant-size, pairing-only verification equation.
+`tests/groth_props.ak` adds property-based tests (using `aiken-lang/fuzz`, 100 random cases each). `prop_*` tests state behaviour that must hold for any input. `known_issue_*` tests pin a filed bug: they pass while the bug exists and fail once it's fixed, at which point they're replaced by the property named in their comment. Its properties: changing any public input to another value in `[0, r)` is rejected; replacing any of `A`, `B` or `C` with an unrelated valid curve point is rejected; and too few public inputs fail. Its known-issue tests cover [#11](https://github.com/ADAOcommunity/zk/issues/11) (extra inputs) and [#12](https://github.com/ADAOcommunity/zk/issues/12) (inputs not range-checked).
+
+All three unit tests measure identically: ~66.9K memory units and ~2.79B CPU units per `verify_compressed` call - comfortably inside Cardano's per-transaction execution budget, and the cheapest of this package's three verifiers by a wide margin, as expected given Groth16's constant-size, pairing-only verification equation.
 
 ## 8. Known limitations and roadmap
 
 - **No trusted-setup tooling.** This module consumes a `VerifierKey` but has no way to generate or attest to one; that must come from an external, circuit-specific ceremony this package neither runs nor audits.
 - **No on-chain prover, by design (§5).** Proof generation is out of scope; a production integration needs its own off-chain Groth16 prover (e.g. `snarkjs`, `arkworks`, or a `gnark` toolchain) feeding this verifier.
-- **`derive`'s length-mismatch handling is asymmetric.** Too few public inputs traps (safe); too many are silently truncated rather than rejected (also safe today, but worth tightening to an explicit length check before this function is exposed to less-trusted callers).
+- **Public inputs aren't fully validated.** Too few public inputs traps, but extra inputs beyond `vkIC` are ignored ([#11](https://github.com/ADAOcommunity/zk/issues/11)), and inputs aren't checked to lie in `[0, r)`, so `x` and `x + r` verify with the same proof ([#12](https://github.com/ADAOcommunity/zk/issues/12)). A validator that reads inputs by position or value can be given values the proof doesn't bind. Both are pinned by `known_issue_*` tests in `tests/groth_props.ak`.
 - **Only two verification-key shapes have been exercised in tests**, both with `n_public = 2`. Larger `vkIC` vectors (more public inputs) are structurally supported by `derive`'s recursion but are unbenchmarked for execution-unit cost.
 - **No on-chain entry point yet.** Like the other two modules in this package, how a validator obtains and trusts a given `VerifierKey`/proof pair (datum/redeemer wiring) is separate, follow-on work.
 - **No external cryptographic audit.** As with the rest of this package, internal design review only; not a substitute for a formal audit before mainnet or high-value use.

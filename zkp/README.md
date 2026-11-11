@@ -11,7 +11,9 @@ lib/
   bullet/   Bulletproofs range-proof verifier and reference prover
   common/   Shared field/point scaffolding (legacy; superseded by native BLS12-381
             builtins inside groth/plonk/bullet — see docs/ for details)
-  tests/    Test suites for groth and plonk (bullet's tests live alongside bullet.ak)
+  tests/    Unit tests for groth and plonk (bullet's unit tests live alongside
+            bullet.ak), property-based tests for all three (*_props.ak),
+            and tests for the common helpers (common_tests.ak)
 docs/
   step-by-step.md                       Protocol-level walkthrough of all three systems
   groth16-implementation-report.md      Architecture, design decisions, security argument
@@ -22,7 +24,7 @@ docs/
 ## Working with this package
 
 ```sh
-aiken check   # run the test suite
+aiken check   # run the unit and property tests
 aiken build   # compile and generate plutus.json
 aiken fmt     # format .ak source
 ```
