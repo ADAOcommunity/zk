@@ -1,9 +1,9 @@
 # PLONK Verifier - Implementation Report
 
-- **Module:** `zkp/lib/plonk/{preinputs,proofs,raw,raw_affine,verifier}.ak`
+- **Module:** `zkp/lib/plonk/{preinputs,proofs,raw_affine,verifier}.ak`
 - **Status:** Functional, tested, unaudited
 - **Test results:**
-  - `aiken check` 12/12 in `tests/plonk_tests`, plus 12/12 in the closely-related `tests/point_tests` (part of 37/37 across the package)
+  - `aiken check` 12/12 in `tests/plonk_tests`, 4/4 in `tests/plonk_props`, plus 12/12 in the closely-related `tests/point_tests` and 2/2 in `tests/point_props` (part of 64/64 across the package)
   - `aiken fmt` clean
   - `aiken build` succeeds
 
@@ -32,7 +32,7 @@ PLONK's universal SRS (reusable across circuits, unlike Groth16's circuit-specif
 
 - `preinputs.ak` - `PlonkPreInputs` (compressed-bytes verification key) and `PreparedPlonkPreInputs` (decompressed, with the evaluation-domain data filled in); `plonk_prepare_preinputs` converts one to the other.
 - `proofs.ak` - `PlonkProof` (compressed-bytes proof, `Int` evaluations) and `PreparedPlonkProof` (decompressed, `Scalar` evaluations, plus a derived `lagrange_inverses` hint); `plonk_prepare_proof` converts one to the other.
-- `raw.ak` / `raw_affine.ak` - two alternate front doors that accept a verification key/proof expressed in this package's own point types rather than raw compressed bytes, and route them into the same `PreparedPlonkPreInputs`/`PlonkProof` pipeline (see §5 for why there are two, and why they aren't equivalent in what they trust).
+- `raw_affine.ak` - an alternate front door that accepts a verification key/proof expressed in this package's own affine point types rather than raw compressed bytes, and routes them into the same `PreparedPlonkPreInputs`/`PlonkProof` pipeline (see §5).
 - `verifier.ak` - `verify_plonk`, the actual pairing-and-permutation check.
 
 **Key types**
@@ -49,7 +49,7 @@ PreparedPlonkProof     { ...same, decompressed, plus lagrange_inverses: List<Sca
 **Entry points**
 
 - `plonk_prepare_preinputs` / `plonk_prepare_proof` - decompress and derive the working forms from the compressed-bytes types.
-- `vkey_to_prepared_preinputs` / `prepare_raw_proof` (`raw.ak`) and `prepare_affine_vkey` / `prepare_affine_proof` (`raw_affine.ak`) - convenience conversions from this package's own point representations.
+- `prepare_affine_vkey` / `prepare_affine_proof` (`raw_affine.ak`) - convenience conversions from this package's own point representation.
 - `verify_plonk(preinputs, pub_inputs, proof) -> Bool` - the verifier; the only function a validator needs.
 
 ## 4. Protocol walkthrough
@@ -66,7 +66,7 @@ PreparedPlonkProof     { ...same, decompressed, plus lagrange_inverses: List<Sca
 
 ## 5. Design differentiation and notable implementation choices
 
-**Two "raw" front doors with different trust postures.** `raw.ak` accepts a verification key/proof expressed in `common/common.ak`'s legacy projective `Point`/`G2Point` types, and converts them to compressed bytes using `common.ak`'s own hand-rolled `g1_compress`/`g2_compress` - which, per §4 of this package's Bulletproofs report, perform manual modular inversion (`mod_inv` via extended Euclidean algorithm) and a Tonelli–Shanks `mod_sqrt` to go from projective to affine to compressed form. `raw_affine.ak` accepts the same data already in affine `G1Affine`/`G2Affine` form (from `common/blst_affine.ak`) and compresses it with `g1_affine_compress`/`g2_affine_compress`, which do no curve arithmetic at all - they only set the two header flag bits on x/y bytes the caller already supplied in affine form. Both paths ultimately hand their output to the native `g1.decompress`/`g2.decompress` builtins inside `plonk_prepare_preinputs`/`plonk_prepare_proof`, which do validate curve membership - but `raw.ak`'s path additionally depends on `common.ak`'s own field arithmetic being correct *before* that native check ever runs, since a bug in that hand-rolled compression could mis-serialize a legitimate point into something that either fails to decompress or - worse - decompresses to the wrong point. `raw_affine.ak` carries no equivalent risk, since it does no arithmetic. New integrations should prefer `raw_affine.ak`, or compressed bytes directly, over `raw.ak` (see §8).
+**An affine front door that does no arithmetic.** `raw_affine.ak` accepts a verification key/proof in affine `G1Affine`/`G2Affine` form (from `common/blst_affine.ak`) and compresses it with `g1_affine_compress`/`g2_affine_compress`, which do no curve arithmetic at all - they only set the header flag bits on x/y bytes the caller already supplied in affine form. The output goes to the native `g1.decompress`/`g2.decompress` builtins inside `plonk_prepare_preinputs`/`plonk_prepare_proof`, which validate curve membership, so this path doesn't depend on `common.ak`'s hand-rolled field arithmetic. Integrations can use it or pass compressed bytes directly.
 
 **Transcript derivation happens twice, deliberately.** `plonk_prepare_proof` (in `proofs.ak`) independently recomputes `beta`, `gamma`, `alpha`, and `zeta` - the same challenges `verify_plonk` will later recompute a second time from scratch - purely to derive the `lagrange_inverses` hint at prepare-time. This is not redundant from a soundness standpoint: `verify_plonk` cannot trust `zeta` (or any other challenge) as supplied by whatever prepared the proof, since a party controlling that value could otherwise choose a favorable challenge. Recomputing the full transcript inside `verify_plonk` itself is what makes the challenges binding; the earlier computation in `plonk_prepare_proof` only exists to produce the (also independently re-checked) Lagrange-inverse hint before the proof is placed in a datum or redeemer.
 
@@ -94,7 +94,7 @@ Twelve tests in `tests/plonk_tests.ak` exercise this module directly, against a 
 | `test_plonk_verification_rejects_tampered_proof` | Mutating `a_eval` by 1 is rejected (`test ... fail`) |
 | `test_plonk_verification_rejects_wrong_pub_inputs` | Substituting a different public-input list is rejected (`test ... fail`) |
 
-`tests/point_tests.ak` (12 further tests, also part of the package's 37) directly exercises `common/blst_affine.ak`'s compression and curve-membership helpers against this same fixture's proof and verification-key points, closing the loop on the affine front door described in §5.
+`tests/point_tests.ak` (12 further tests, also part of the package's 64) directly exercises `common/blst_affine.ak`'s compression and curve-membership helpers against this same fixture's proof and verification-key points, closing the loop on the affine front door described in §5.
 
 `test_plonk_verification_with_affine_points` measures approximately 6.68M memory units and 8.63B CPU units - by far the most expensive single call among this package's three verifiers (compare Groth16's ~66.9K mem / 2.79B cpu and Bulletproofs' range proof at ~5.2M mem / 14.2B cpu at `n=8`), and leaves markedly less headroom against Cardano's per-transaction budget than either. Cost scales with `n_public`: each additional public input adds both a Lagrange-inverse check and a term in the public-input polynomial evaluation; only the 2-public-input fixture has been measured.
 
@@ -102,7 +102,6 @@ Twelve tests in `tests/plonk_tests.ak` exercise this module directly, against a 
 
 - **No trusted-setup tooling.** This module consumes `x2` (and the rest of the verification key) but has no way to generate or attest to a universal SRS; that must come from an external ceremony (e.g. Perpetual Powers of Tau plus a circuit-specific phase 2) this package neither runs nor audits.
 - **No on-chain prover, by design (§5).** Proof generation, circuit compilation, and preprocessing are all out of scope; a production integration needs its own off-chain PLONK toolchain feeding this verifier.
-- **`raw.ak`'s legacy compression path carries more risk than `raw_affine.ak`'s (§5).** New integrations should prefer `raw_affine.ak` or pre-compressed bytes; `raw.ak` should be revalidated against `common.ak`'s field-arithmetic correctness, or retired, before further use.
 - **Execution-unit cost is only measured at `n_public = 2`.** This is the most expensive verifier in the package per call already; larger public-input counts should be benchmarked before use in a real deployment.
 - **No on-chain entry point yet.** Like the other two modules in this package, how a validator obtains and trusts a given verification key/proof pair (datum/redeemer wiring) is separate, follow-on work.
 - **No cross-implementation interoperability testing beyond one fixture.** The transcript and batching scheme are documented as matching a `snarkjs`-style variant, but only one externally-produced proof has been used to validate that against this implementation; broader test vectors are future work.
@@ -110,4 +109,4 @@ Twelve tests in `tests/plonk_tests.ak` exercise this module directly, against a 
 
 ## 9. Conclusion
 
-This module delivers a functional PLONK verifier built on native BLS12-381 pairing and decompression builtins, using the standard batched-KZG technique to keep a verification equation that would otherwise require many separate pairings down to two Miller loops and one final exponentiation. Its two-hint design (Lagrange inverses computed off-chain, checked cheaply on-chain) and its two alternate raw-input front doors are documented, deliberate engineering choices; the clearest remaining gaps are the ones every verifier-only module in this package shares - no owned trusted setup, no owned prover, and no external audit - plus one specific to this module: `raw.ak`'s dependency on legacy field arithmetic that `raw_affine.ak` avoids entirely.
+This module delivers a functional PLONK verifier built on native BLS12-381 pairing and decompression builtins, using the standard batched-KZG technique to keep a verification equation that would otherwise require many separate pairings down to two Miller loops and one final exponentiation. Its two-hint design (Lagrange inverses computed off-chain, checked cheaply on-chain) and its affine front door are documented, deliberate engineering choices; the clearest remaining gaps are the ones every verifier-only module in this package shares - no owned trusted setup, no owned prover, and no external audit.

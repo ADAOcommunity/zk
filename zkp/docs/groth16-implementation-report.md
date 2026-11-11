@@ -3,7 +3,7 @@
 - **Module:** `zkp/lib/groth/groth.ak`
 - **Status:** Functional, tested, unaudited
 - **Test results:**
-  - `aiken check` 3/3 (part of 37/37 across the package)
+  - `aiken check` 3/3 in `tests/groth_tests`, plus 6/6 property and known-issue tests in `tests/groth_props` (part of 64/64 across the package)
   - `aiken fmt` clean
   - `aiken build` succeeds
 
