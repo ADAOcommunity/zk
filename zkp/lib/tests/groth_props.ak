@@ -11,7 +11,9 @@ use aiken/crypto/bls12_381/g1
 use aiken/crypto/bls12_381/g2
 use aiken/crypto/bls12_381/scalar.{field_prime}
 use aiken/fuzz
-use groth/groth.{CompressedProof, CompressedVK, verify_compressed}
+use groth/groth.{
+  CompressedProof, CompressedVK, derive, uncompress_vk, verify_compressed,
+}
 
 /// Same fixture as `groth_verify_pass_1`: a proof valid for `[561, 3]`.
 pub const groth_vk: CompressedVK =
@@ -95,23 +97,37 @@ test prop_groth_rejects_replaced_proof_point(
   !verify_compressed(groth_vk, proof, groth_inputs)
 }
 
-/// Fewer inputs than the key expects must fail.
-test groth_rejects_missing_input() fail {
-  verify_compressed(groth_vk, groth_proof, [561])
+/// Fewer inputs than the key expects are rejected.
+test groth_rejects_missing_input() {
+  and {
+    !verify_compressed(groth_vk, groth_proof, [561]),
+    !verify_compressed(groth_vk, groth_proof, []),
+  }
+}
+
+/// ADAOcommunity/zk#11: inputs past the end of `vkIC` are rejected, whatever
+/// their values.
+test prop_groth_rejects_extra_inputs(
+  extra via fuzz.list_between(fuzz.int(), 1, 5),
+) {
+  !verify_compressed(groth_vk, groth_proof, list.concat(groth_inputs, extra))
+}
+
+/// ADAOcommunity/zk#11: `derive` itself no longer drops inputs past the end of
+/// `vkIC`, for callers that use it directly. (Before the fix this returned
+/// `True`, since the extra input was dropped and both sides matched.)
+test groth_derive_fails_on_extra_input() fail {
+  expect [head, ..tail] = uncompress_vk(groth_vk).vkIC
+  derive(tail, list.concat(groth_inputs, [999]), head) == derive(
+    tail,
+    groth_inputs,
+    head,
+  )
 }
 
 // ---------------------------------------------------------------------------
 // Known issues
 // ---------------------------------------------------------------------------
-
-/// ADAOcommunity/zk#11: inputs past the end of `vkIC` are ignored.
-/// Once fixed, replace with `prop_groth_rejects_extra_inputs` (the same call
-/// must fail).
-test known_issue_11_groth_extra_inputs_ignored(
-  extra via fuzz.list_between(fuzz.int(), 1, 5),
-) {
-  verify_compressed(groth_vk, groth_proof, list.concat(groth_inputs, extra))
-}
 
 /// ADAOcommunity/zk#12: an input of `x + k * r` verifies like `x`.
 /// Once fixed, replace with `prop_groth_rejects_input_out_of_field` (the same

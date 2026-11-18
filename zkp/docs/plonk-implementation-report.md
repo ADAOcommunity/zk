@@ -3,7 +3,7 @@
 - **Module:** `zkp/lib/plonk/{preinputs,proofs,raw_affine,verifier}.ak`
 - **Status:** Functional, tested, unaudited
 - **Test results:**
-  - `aiken check` 12/12 in `tests/plonk_tests`, 4/4 in `tests/plonk_props`, plus 12/12 in the closely-related `tests/point_tests` and 2/2 in `tests/point_props` (part of 64/64 across the package)
+  - `aiken check` 12/12 in `tests/plonk_tests`, 4/4 in `tests/plonk_props`, plus 12/12 in the closely-related `tests/point_tests` and 2/2 in `tests/point_props` (part of 67/67 across the package)
   - `aiken fmt` clean
   - `aiken build` succeeds
 
@@ -94,11 +94,11 @@ Twelve tests in `tests/plonk_tests.ak` exercise this module directly, against a 
 | `test_plonk_verification_rejects_tampered_proof` | Mutating `a_eval` by 1 is rejected (`test ... fail`) |
 | `test_plonk_verification_rejects_wrong_pub_inputs` | Substituting a different public-input list is rejected (`test ... fail`) |
 
-`tests/point_tests.ak` (12 further tests, also part of the package's 64) directly exercises `common/blst_affine.ak`'s compression and curve-membership helpers against this same fixture's proof and verification-key points, closing the loop on the affine front door described in §5.
+`tests/point_tests.ak` (12 further tests, also part of the package's 67) directly exercises `common/blst_affine.ak`'s compression and curve-membership helpers against this same fixture's proof and verification-key points, closing the loop on the affine front door described in §5.
 
 `tests/plonk_props.ak` adds property-based tests (using `aiken-lang/fuzz`, 100 random cases each). `prop_*` tests state behaviour that must hold for any input. `known_issue_*` tests pin a filed bug: they pass while the bug exists and fail once it's fixed, at which point they're replaced by the property named in their comment. Its properties: changing any public input to another value in `[0, r)` is rejected, and changing any of the six evaluation scalars is rejected. Its known-issue tests cover [#12](https://github.com/ADAOcommunity/zk/issues/12) (inputs not range-checked) and [#14](https://github.com/ADAOcommunity/zk/issues/14) (inverse-list length unchecked). `tests/point_props.ak` checks that `g1_affine_compress` produces exactly the builtin's encoding for random points, and pins [#15](https://github.com/ADAOcommunity/zk/issues/15).
 
-`test_plonk_verification_with_affine_points` measures approximately 6.68M memory units and 8.63B CPU units - by far the most expensive single call among this package's three verifiers (compare Groth16's ~66.9K mem / 2.79B cpu and Bulletproofs' range proof at ~5.2M mem / 14.2B cpu at `n=8`), and leaves markedly less headroom against Cardano's per-transaction budget than either. Cost scales with `n_public`: each additional public input adds both a Lagrange-inverse check and a term in the public-input polynomial evaluation; only the 2-public-input fixture has been measured.
+`test_plonk_verification_with_affine_points`, which prepares the key and proof as well as verifying, measures approximately 6.68M memory units and 8.63B CPU units - by far the most expensive single call among this package's three verifiers (compare Groth16's ~83.7K mem / 2.80B cpu and Bulletproofs' range proof at ~5.2M mem / 14.2B cpu at `n=8`), and leaves markedly less headroom against Cardano's per-transaction budget than either. Cost scales with `n_public`: each additional public input adds both a Lagrange-inverse check and a term in the public-input polynomial evaluation; only the 2-public-input fixture has been measured.
 
 ## 8. Known limitations and roadmap
 
