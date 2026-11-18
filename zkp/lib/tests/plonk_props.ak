@@ -105,18 +105,12 @@ test plonk_rejects_missing_input() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Known issues
-// ---------------------------------------------------------------------------
-
-/// ADAOcommunity/zk#14: nothing checks the inverse list's length. Dropping the
-/// last inverse (the one for the surplus generator, #19) still verifies.
-/// Dropping one that belongs to a public input makes verification fail, because
-/// each inverse also weights its input in the public-input polynomial; that
-/// input is then hashed into the transcript but left out of the constraint, the
-/// same gap as #13. Once fixed, replace with
-/// `plonk_rejects_short_inverse_list` (the same call must fail).
-test known_issue_14_plonk_inverse_list_length_unchecked() {
+/// ADAOcommunity/zk#14: the proof must carry exactly one Lagrange inverse per
+/// generator. Appending a junk inverse used to verify, since the check paired
+/// the lists with `map2` and ignored the surplus; dropping one is rejected too.
+test prop_plonk_rejects_wrong_inverse_count(
+  (append, extra) via fuzz.tuple(fuzz.bool(), nonzero_scalar()),
+) {
   let preinputs = prepare_affine_vkey(test_plonk_vkey_affine)
   let prepared =
     plonk_prepare_proof(
@@ -124,20 +118,15 @@ test known_issue_14_plonk_inverse_list_length_unchecked() {
       test_plonk_pub_inputs,
       prepare_affine_proof(test_plonk_proof_affine),
     )
-  let short =
-    PreparedPlonkProof {
-      ..prepared,
-      lagrange_inverses: list.take(
-        prepared.lagrange_inverses,
-        list.length(test_plonk_pub_inputs),
-      ),
+  let inverses =
+    if append {
+      list.concat(prepared.lagrange_inverses, [scalar.from_int(extra)])
+    } else {
+      list.drop(prepared.lagrange_inverses, 1)
     }
-  and {
-    list.length(short.lagrange_inverses) < list.length(preinputs.generators),
-    verify_plonk(
-      preinputs: preinputs,
-      pub_inputs: test_plonk_pub_inputs,
-      proof: short,
-    ),
-  }
+  !verify_plonk(
+    preinputs: preinputs,
+    pub_inputs: test_plonk_pub_inputs,
+    proof: PreparedPlonkProof { ..prepared, lagrange_inverses: inverses },
+  )
 }
