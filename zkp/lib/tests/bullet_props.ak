@@ -12,6 +12,9 @@ use tests/groth_props.{nonzero_scalar}
 
 const n: Int = 8
 
+/// A constant, so `setup` runs once at compile time rather than in every case.
+const vk: BulletproofVerificationKey = setup(n)
+
 /// An in-range value, a commitment blinding, and a prover seed.
 fn statement() -> Fuzzer<(Int, Int, ByteArray)> {
   fuzz.tuple3(
@@ -27,7 +30,6 @@ fn prove(
   gamma: Int,
   seed: ByteArray,
 ) -> (BulletproofVerificationKey, BulletproofProof, G1Element) {
-  let vk = setup(n)
   let g = scalar.from_int(gamma)
   (
     vk,
@@ -94,7 +96,6 @@ test prop_bullet_commit_value_rejects_out_of_field(
     fuzz.either(fuzz.int_between(-1000, -1), fuzz.int_between(1, 1000)),
   ),
 ) fail {
-  let vk = setup(n)
   let g = scalar.from_int(gamma)
   commit_value(vk, value + k * field_prime, g) == commit_value(vk, value, g)
 }

@@ -15,7 +15,13 @@ const protocol_id: ByteArray = "adao-zkp/bulletproofs-range-proof/v1"
 /// in `verify`, so an unbounded `n` is an unbounded compute-cost knob.
 const max_n: Int = 64
 
-pub type BulletproofVerificationKey {
+/// Generators for n-bit range proofs. The type is opaque, so the only way to
+/// get a key is `setup`: one can't be decoded from a redeemer, datum or other
+/// `Data`, or built from chosen points. `verify` trusts every generator in the
+/// key, and a prover who chose them (`h = k * g`, say) could open a commitment
+/// to any value. Hashing the key into the transcript wouldn't stop that, since
+/// such a prover knows the relations before any challenge is drawn.
+pub opaque type BulletproofVerificationKey {
   g: G1Element,
   h: G1Element,
   u: G1Element,
@@ -47,8 +53,11 @@ pub type ProofBlinding {
 }
 
 /// Derive a deterministic, nothing-up-my-sleeve set of generators for an
-/// n-bit range proof. Meant to be computed once and embedded as a constant
-/// verification key, not recomputed per transaction.
+/// n-bit range proof. A validator must fix `n` itself, not read it from the
+/// transaction, or the prover chooses the range. Calling `setup` in the
+/// validator costs about 2B CPU at n = 8. A module constant
+/// (`const vk = bullet.setup(8)`) is evaluated at compile time instead, but
+/// makes the script far larger; the implementation report has the figures.
 pub fn setup(n: Int) -> BulletproofVerificationKey {
   if n <= 0 || n > max_n {
     fail @"n must be between 1 and max_n"
@@ -261,7 +270,8 @@ fn derive_blinding(seed: ByteArray, n: Int) -> ProofBlinding {
 }
 
 /// Verify a range proof against a public Pedersen commitment. Never takes the
-/// hidden value or its blinding factor.
+/// hidden value or its blinding factor. `vk` can only come from `setup`; see
+/// `BulletproofVerificationKey`.
 pub fn verify(
   vk: BulletproofVerificationKey,
   v_commit: G1Element,

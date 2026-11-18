@@ -38,16 +38,27 @@ ProofBlinding               { alpha, rho, tau1, tau2, s_l, s_r }
 
 `g`, `h`, `u`, and every entry of `g_vec`/`h_vec` are native `G1Element` values; `tau_x`, `mu`, and every entry of `l_vec`/`r_vec` are native `Scalar` values from the BLS12-381 scalar field. `g_sum`/`h_sum` are precomputed folds of the generator vectors, carried in the key to avoid re-summing `n` points on every verification.
 
+`BulletproofVerificationKey` is opaque, so `setup` is the only way to make one: a key can't be decoded from a redeemer, datum or other `Data`, or built from chosen points ([#17](https://github.com/ADAOcommunity/zk/issues/17)). That matters because `verify` trusts every generator in the key. A prover who chose them, with `h = k·g` say, could open a commitment to any value. Hashing the key into the transcript wouldn't stop that, since such a prover knows the relations before any challenge is drawn.
+
 **Entry points**
 
-- `setup(n) -> BulletproofVerificationKey` - derives all generators deterministically.
+- `setup(n) -> BulletproofVerificationKey` - derives all generators deterministically; the only way to make a key.
 - `commit_value(vk, value, gamma) -> G1Element` - builds the public Pedersen commitment `V`; fails unless `0 <= value < r`.
 - `generate_proof(vk, value, gamma, blinding) -> BulletproofProof` - the reference prover.
 - `verify(vk, v_commit, proof) -> Bool` - the verifier; the only function a validator needs.
 
 ## 4. Protocol walkthrough
 
-**Setup.** `setup(n)` derives `g` (the curve's standard generator), `h`, `u`, and length-`n` vectors `g_vec`/`h_vec` via `hash_to_group` with distinct domain-separation tags. This is nothing-up-my-sleeve by construction - no party ever holds a discrete-log relationship between any two generators - and is meant to be computed once and embedded as a deployed constant, not recomputed per transaction.
+**Setup.** `setup(n)` derives `g` (the curve's standard generator), `h`, `u`, and length-`n` vectors `g_vec`/`h_vec` via `hash_to_group` with distinct domain-separation tags. This is nothing-up-my-sleeve by construction - no party ever holds a discrete-log relationship between any two generators.
+
+**Holding the key.** A validator must fix `n` itself rather than read it from the transaction, or the prover chooses the range. It can then call `setup(n)` or hold the key as a module constant. Measured at `n = 8` with Aiken v1.1.21, script size for a spend validator that builds the proof from plain integers and compressed points, and the cost of the check (`verify`, plus `setup` where the validator calls it) in a test with a constant proof and commitment:
+
+| Key | Script size | Check cost |
+|---|---|---|
+| `bullet.setup(8)` called in the validator | 2,955 bytes | 3.16M memory, 7.81B CPU |
+| `const vk = bullet.setup(8)` | 22,714 bytes | 3.00M memory, 5.83B CPU |
+
+Aiken evaluates a constant at compile time, which saves the 2B CPU that `setup` costs, but embeds the key in the script: at `n = 8` that is over the 16,384-byte transaction limit, and at `n = 2` it is still 11,257 bytes. Calling `setup` in the validator is the option that fits.
 
 **Commitment.** `commit_value` builds `V = g^value · h^gamma`, a standard Pedersen commitment. It fails unless `0 <= value < r`, where `r` is the order of the scalar field: exponents are taken mod `r`, so without the check `value + k·r`, a negative amount included, would give the same `V` as `value` and match its range proof ([#16](https://github.com/ADAOcommunity/zk/issues/16)).
 
@@ -122,7 +133,6 @@ At `n = 8`, a full `verify` call measures approximately 5.2M memory units and 14
 - **Execution-unit cost is unbenchmarked past `n = 8`.** The `max_n = 64` bound limits worst-case cost, but actual figures at `n = 32`/`64` should be measured before either is used in a real deployment.
 - **No on-chain entry point yet.** This module covers the cryptographic core; how a validator obtains and trusts a given `V` (datum/redeemer wiring) is separate, follow-on work.
 - **No external cryptographic audit.** This implementation has had internal design review and one external review pass; neither is a substitute for a formal audit before any mainnet or high-value use.
-- **`verify` trusts the generator vectors in the key it's given** ([#17](https://github.com/ADAOcommunity/zk/issues/17)); a validator must fix the key rather than accept one from a redeemer.
 - **The deterministic prover is a test fixture, not a production prover.** Aiken has no RNG, so `generate_proof` requires the caller to supply every blinding factor; `generate_proof_deterministic` exists only to make self-contained tests possible and is documented as such, though it is still public ([#18](https://github.com/ADAOcommunity/zk/issues/18)). A production integration must source genuine entropy for these values itself.
 
 ## 9. Conclusion
