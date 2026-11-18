@@ -3,7 +3,7 @@
 - **Module:** `zkp/lib/plonk/{preinputs,proofs,raw_affine,verifier}.ak`
 - **Status:** Functional, tested, unaudited
 - **Test results:**
-  - `aiken check` 12/12 in `tests/plonk_tests`, 9/9 in `tests/plonk_props`, plus 15/15 in the closely-related `tests/point_tests` and 5/5 in `tests/point_props` (part of 82/82 across the package)
+  - `aiken check` 12/12 in `tests/plonk_tests`, 9/9 in `tests/plonk_props`, plus 15/15 in the closely-related `tests/point_tests` and 4/4 in `tests/point_props` (part of 89/89 across the package)
   - `aiken fmt` clean
   - `aiken build` succeeds
 
