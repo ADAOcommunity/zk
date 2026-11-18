@@ -5,6 +5,7 @@
 use aiken/collection/list
 use aiken/crypto/bls12_381/scalar.{field_prime}
 use aiken/fuzz
+use plonk/preinputs.{PreparedPlonkPreInputs}
 use plonk/proofs.{PreparedPlonkProof, plonk_prepare_proof}
 use plonk/raw_affine.{
   AffineProof, AffineVerificationKey, prepare_affine_proof, prepare_affine_vkey,
@@ -87,8 +88,9 @@ test prop_plonk_rejects_input_out_of_field(
 
 /// ADAOcommunity/zk#13: more inputs than `n_public` are rejected. An honest
 /// proof would fail anyway, because the extra values change the transcript, so
-/// this guards the count check but can't show the forgery the issue describes
-/// (that needs a modified prover).
+/// this passes with or without the count check; `plonk_rejects_n_public_mismatch`
+/// is the test that guards it. Showing the forgery the issue describes needs a
+/// modified prover.
 test prop_plonk_rejects_extra_inputs(
   extra via fuzz.list_between(nonzero_scalar(), 1, 5),
 ) {
@@ -99,11 +101,37 @@ test prop_plonk_rejects_extra_inputs(
 }
 
 /// ADAOcommunity/zk#13: fewer inputs than `n_public` are rejected. As with the
-/// test above, an honest proof fails here anyway, so this guards the check.
+/// test above, an honest proof fails here anyway, with or without the check.
 test plonk_rejects_missing_input() {
   and {
     !plonk_verifies(test_plonk_proof_affine, [63]),
     !plonk_verifies(test_plonk_proof_affine, []),
+  }
+}
+
+/// ADAOcommunity/zk#13: a key whose `n_public` differs from the number of
+/// inputs is rejected, while the generators, inputs and proof stay valid. Only
+/// the count check reads `n_public`, so this fails if that check is removed.
+test plonk_rejects_n_public_mismatch() {
+  let preinputs = prepare_affine_vkey(test_plonk_vkey_affine)
+  let prepared =
+    plonk_prepare_proof(
+      preinputs,
+      test_plonk_pub_inputs,
+      prepare_affine_proof(test_plonk_proof_affine),
+    )
+  let verifies_with =
+    fn(n) {
+      verify_plonk(
+        preinputs: PreparedPlonkPreInputs { ..preinputs, n_public: n },
+        pub_inputs: test_plonk_pub_inputs,
+        proof: prepared,
+      )
+    }
+  and {
+    verifies_with(test_plonk_vkey_affine.n_public),
+    !verifies_with(1),
+    !verifies_with(3),
   }
 }
 
