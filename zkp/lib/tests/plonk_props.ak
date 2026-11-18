@@ -133,6 +133,24 @@ test prop_plonk_rejects_wrong_inverse_count(
   )
 }
 
+/// ADAOcommunity/zk#14: an empty inverse list returns `False` rather than an
+/// error, although the verifier would otherwise fail taking the first Lagrange
+/// term.
+test plonk_rejects_empty_inverse_list() {
+  let preinputs = prepare_affine_vkey(test_plonk_vkey_affine)
+  let prepared =
+    plonk_prepare_proof(
+      preinputs,
+      test_plonk_pub_inputs,
+      prepare_affine_proof(test_plonk_proof_affine),
+    )
+  !verify_plonk(
+    preinputs: preinputs,
+    pub_inputs: test_plonk_pub_inputs,
+    proof: PreparedPlonkProof { ..prepared, lagrange_inverses: [] },
+  )
+}
+
 /// ADAOcommunity/zk#19: one generator per public input, and never fewer than
 /// one, since the permutation check always uses the first Lagrange term.
 test plonk_generators_match_n_public() {
