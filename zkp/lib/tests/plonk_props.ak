@@ -63,6 +63,28 @@ test prop_plonk_rejects_tampered_evaluation(
   )
 }
 
+/// ADAOcommunity/zk#13: more inputs than `n_public` are rejected. An honest
+/// proof would fail anyway, because the extra values change the transcript, so
+/// this guards the count check but can't show the forgery the issue describes
+/// (that needs a modified prover).
+test prop_plonk_rejects_extra_inputs(
+  extra via fuzz.list_between(nonzero_scalar(), 1, 5),
+) {
+  !plonk_verifies(
+    test_plonk_proof_affine,
+    list.concat(test_plonk_pub_inputs, extra),
+  )
+}
+
+/// ADAOcommunity/zk#13: fewer inputs than `n_public` are rejected. As with the
+/// test above, an honest proof fails here anyway, so this guards the check.
+test plonk_rejects_missing_input() {
+  and {
+    !plonk_verifies(test_plonk_proof_affine, [63]),
+    !plonk_verifies(test_plonk_proof_affine, []),
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Known issues
 // ---------------------------------------------------------------------------

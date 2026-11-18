@@ -1,4 +1,4 @@
-//// Tests for `common/inputs`, the Groth16 verifier's public-input check.
+//// Tests for `common/inputs`, the public-input check both verifiers share.
 
 use aiken/collection/list
 use aiken/crypto/bls12_381/scalar.{field_prime}

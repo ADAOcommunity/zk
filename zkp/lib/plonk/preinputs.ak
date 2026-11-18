@@ -23,6 +23,9 @@ pub type PreparedPlonkPreInputs {
   n: Int,
   generator: State<Scalar>,
   generators: List<State<Scalar>>,
+  /// How many public inputs the circuit takes. `verify_plonk` rejects any
+  /// other count.
+  n_public: Int,
   power: Int,
   k1: State<Scalar>,
   k2: State<Scalar>,
@@ -56,6 +59,7 @@ pub fn plonk_prepare_preinputs(
     n: scalar.to_int(scale(scalar.from_int(2), inputs.power)),
     generator,
     generators: list.map(list.range(0, n_public), fn(n) { scale(generator, n) }),
+    n_public,
     power: inputs.power,
     k1: inputs.k1,
     k2: inputs.k2,

@@ -3,7 +3,7 @@
 - **Module:** `zkp/lib/groth/groth.ak`
 - **Status:** Functional, tested, unaudited
 - **Test results:**
-  - `aiken check` 3/3 in `tests/groth_tests`, 7/7 in `tests/groth_props`, plus 2/2 in `tests/inputs_tests` for the input check (part of 67/67 across the package)
+  - `aiken check` 3/3 in `tests/groth_tests`, 7/7 in `tests/groth_props`, plus 2/2 in `tests/inputs_tests` for the shared input check (part of 69/69 across the package)
   - `aiken fmt` clean
   - `aiken build` succeeds
 
@@ -50,7 +50,7 @@ The `Compressed*` types are the wire/datum format: standard 48-byte (G1) and 96-
 
 **Decompression.** `uncompress_vk`/`uncompress_proof` call `bls12_381_g1_uncompress`/`bls12_381_g2_uncompress` directly - the native Plutus builtins - for every point. This is a deliberate departure from `lib/common/common.ak`, which contains its own hand-rolled `g1_compress`/`g1_decompress` pair built from manual modular arithmetic (`mod_inv`, a Tonelli-Shanks `mod_sqrt`, and a `miller_loop`/`final_exponentiation` pair that are explicitly placeholder stand-ins, by their own comments, for real `Fp12` arithmetic). `groth.ak` does not use any of it. Every point this module handles is validated as a genuine, in-subgroup curve point by the native builtin at decompression time, not by this package's own field simulation.
 
-**Public-input checks.** Before any curve arithmetic, `verify` calls `check_public_inputs` (`common/inputs.ak`), which requires exactly one input per `vkIC` entry after the first; otherwise `verify` returns `False`. The count check matters because a validator that reads inputs by position must never see a value the proof doesn't bind. Malformed inputs return `False` rather than trapping, so a caller can use the result in a branch.
+**Public-input checks.** Before any curve arithmetic, `verify` calls `check_public_inputs` (`common/inputs.ak`, shared with the PLONK verifier), which requires exactly one input per `vkIC` entry after the first; otherwise `verify` returns `False`. The count check matters because a validator that reads inputs by position must never see a value the proof doesn't bind. Malformed inputs return `False` rather than trapping, so a caller can use the result in a branch.
 
 **Public-input combination.** `derive` folds the verification key's `vkIC` vector against the public inputs: `K = vkIC[0] + Σ inputs[i] · vkIC[i+1]`. It recurses on both lists in lockstep and fails if either runs out before the other, so a caller using `derive` directly can't have an input left out of `K` either.
 

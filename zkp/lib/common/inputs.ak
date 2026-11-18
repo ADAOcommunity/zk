@@ -1,4 +1,4 @@
-//// Checks on public inputs for the Groth16 verifier.
+//// Checks on public inputs, shared by the Groth16 and PLONK verifiers.
 
 /// True when `inputs` has exactly `expected` entries.
 ///

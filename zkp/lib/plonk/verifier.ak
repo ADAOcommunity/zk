@@ -6,10 +6,27 @@ use aiken/crypto/bls12_381/g2
 use aiken/crypto/bls12_381/pairing.{final_exponentiation, miller_loop}
 use aiken/crypto/bls12_381/scalar.{Scalar, scale2}
 use common/common.{concat_and_keccak_256, g1_sum, scalar_sum}
+use common/inputs.{check_public_inputs}
 use plonk/preinputs.{PreparedPlonkPreInputs}
 use plonk/proofs.{PreparedPlonkProof}
 
+/// Verify a PLONK proof. Returns `False` unless `pub_inputs` has exactly
+/// `n_public` entries. Without that check an input could be hashed into the
+/// transcript yet not be bound to a public-input row of the circuit.
 pub fn verify_plonk(
+  preinputs: PreparedPlonkPreInputs,
+  pub_inputs: List<Int>,
+  proof: PreparedPlonkProof,
+) -> Bool {
+  and {
+    check_public_inputs(pub_inputs, preinputs.n_public),
+    verify_checked(preinputs, pub_inputs, proof),
+  }
+}
+
+/// The verifier proper. Assumes the input count check in `verify_plonk`
+/// has passed.
+fn verify_checked(
   preinputs: PreparedPlonkPreInputs,
   pub_inputs: List<Int>,
   proof: PreparedPlonkProof,
