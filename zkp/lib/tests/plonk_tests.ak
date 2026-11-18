@@ -1,4 +1,3 @@
-use aiken/collection/list
 use aiken/crypto/bls12_381/scalar
 use common/blst_affine.{
   G1Infinity, G1Point, G2Point, g1_affine_compress, g2_affine_compress,
