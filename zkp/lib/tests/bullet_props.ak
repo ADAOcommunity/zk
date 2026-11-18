@@ -4,12 +4,14 @@
 
 use aiken/collection/list
 use aiken/crypto
+use aiken/crypto/bls12_381/g1
 use aiken/crypto/bls12_381/scalar.{field_prime}
 use aiken/fuzz
 use aiken/primitive/bytearray
 use bullet/bullet.{
-  BulletproofProof, BulletproofVerificationKey, ProofBlinding, commit_value,
-  generate_proof, setup, verify,
+  BulletproofProof, BulletproofVerificationKey, CompressedBulletproofProof,
+  ProofBlinding, commit_value, compress_proof, generate_proof, setup,
+  uncompress_proof, verify,
 }
 use tests/groth_props.{nonzero_scalar}
 
@@ -127,4 +129,92 @@ test prop_bullet_commit_value_rejects_out_of_field(
 ) fail {
   let g = scalar.from_int(gamma)
   commit_value(vk, value + k * field_prime, g) == commit_value(vk, value, g)
+}
+
+/// A proof encoded with `compress_proof`, as a validator would take it from a
+/// redeemer, decodes with `uncompress_proof` to a proof that still verifies,
+/// and encodes back to the same data.
+test prop_bullet_compressed_proof_round_trips(
+  (value, gamma, seed) via statement(),
+) {
+  let (vk, proof, commitment) = prove(value, gamma, seed)
+  let compressed = compress_proof(proof)
+  let decoded = uncompress_proof(compressed)
+  and {
+    verify(vk, commitment, decoded),
+    compress_proof(decoded) == compressed,
+  }
+}
+
+/// `uncompress_proof` fails when `tau_x`, `mu`, or the first entry of `l_vec`
+/// or `r_vec` is given as `x + k * r` (negative when k < 0), which would
+/// otherwise decode to the same proof as `x`.
+test prop_bullet_uncompress_rejects_out_of_field_scalar(
+  ((value, gamma, seed), which, k) via fuzz.tuple3(
+    statement(),
+    fuzz.int_between(0, 3),
+    fuzz.either(fuzz.int_between(-1000, -1), fuzz.int_between(1, 1000)),
+  ),
+) fail {
+  let (vk, proof, commitment) = prove(value, gamma, seed)
+  let compressed = compress_proof(proof)
+  let shift = k * field_prime
+  let shift_head =
+    fn(xs) {
+      when xs is {
+        [x, ..rest] -> [x + shift, ..rest]
+        [] -> fail @"empty vector"
+      }
+    }
+  let shifted =
+    when which is {
+      0 ->
+        CompressedBulletproofProof {
+          ..compressed,
+          tau_x: compressed.tau_x + shift,
+        }
+      1 ->
+        CompressedBulletproofProof { ..compressed, mu: compressed.mu + shift }
+      2 ->
+        CompressedBulletproofProof {
+          ..compressed,
+          l_vec: shift_head(compressed.l_vec),
+        }
+      _ ->
+        CompressedBulletproofProof {
+          ..compressed,
+          r_vec: shift_head(compressed.r_vec),
+        }
+    }
+  verify(vk, commitment, uncompress_proof(shifted))
+}
+
+/// A compressed G1 encoding (x = 4) of a point that is on the curve but
+/// outside the prime-order subgroup.
+const point_outside_subgroup: ByteArray =
+  #"800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004"
+
+/// `uncompress_proof` fails when `a`, `s`, `t1` or `t2` is a point outside
+/// the subgroup.
+test prop_bullet_uncompress_rejects_point_outside_subgroup(
+  ((value, gamma, seed), which) via fuzz.tuple(
+    statement(),
+    fuzz.int_between(0, 3),
+  ),
+) fail {
+  let (_, proof, _) = prove(value, gamma, seed)
+  let compressed = compress_proof(proof)
+  let p = point_outside_subgroup
+  let bad =
+    when which is {
+      0 -> CompressedBulletproofProof { ..compressed, a: p }
+      1 -> CompressedBulletproofProof { ..compressed, s: p }
+      2 -> CompressedBulletproofProof { ..compressed, t1: p }
+      _ -> CompressedBulletproofProof { ..compressed, t2: p }
+    }
+  let decoded = uncompress_proof(bad)
+  list.any(
+    [decoded.a, decoded.s, decoded.t1, decoded.t2],
+    fn(q) { g1.compress(q) == p },
+  )
 }
