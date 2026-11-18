@@ -11,6 +11,7 @@ use aiken/crypto/bls12_381/g1
 use aiken/crypto/bls12_381/g2
 use aiken/crypto/bls12_381/scalar.{field_prime}
 use aiken/fuzz
+use common/inputs.{check_public_inputs}
 use groth/groth.{
   CompressedProof, CompressedVK, derive, uncompress_vk, verify_compressed,
 }
@@ -125,23 +126,39 @@ test groth_derive_fails_on_extra_input() fail {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Known issues
-// ---------------------------------------------------------------------------
-
-/// ADAOcommunity/zk#12: an input of `x + k * r` verifies like `x`.
-/// Once fixed, replace with `prop_groth_rejects_input_out_of_field` (the same
-/// call must fail).
-test known_issue_12_groth_input_not_range_checked(
-  (index, k) via fuzz.tuple(fuzz.int_between(0, 1), fuzz.int_between(1, 1000)),
+/// ADAOcommunity/zk#12: an input of `x + k * r` or `x - k * r` is rejected,
+/// although the builtin maps it to the same point as `x`.
+test prop_groth_rejects_input_out_of_field(
+  (index, k, below) via fuzz.tuple3(
+    fuzz.int_between(0, 1),
+    fuzz.int_between(1, 1000),
+    fuzz.bool(),
+  ),
 ) {
-  let inputs = update_at(groth_inputs, index, fn(x) { x + k * field_prime })
-  verify_compressed(groth_vk, groth_proof, inputs)
+  let shift =
+    if below {
+      -k * field_prime
+    } else {
+      k * field_prime
+    }
+  let inputs = update_at(groth_inputs, index, fn(x) { x + shift })
+  !verify_compressed(groth_vk, groth_proof, inputs)
 }
 
-/// Sanity check that the builtin really reduces mod `r`, which is what makes
-/// #12 possible. Unlike the test above, this one should keep passing after #12
-/// is fixed, since the fix belongs in the verifier.
+/// The boundary values: `r - 1` is accepted by the range check (and then fails
+/// the pairing, being the wrong value), `r` and `-1` are rejected before it.
+test groth_input_range_boundaries() {
+  and {
+    check_public_inputs([field_prime - 1, 0], 2),
+    !check_public_inputs([field_prime, 0], 2),
+    !check_public_inputs([-1, 0], 2),
+    !verify_compressed(groth_vk, groth_proof, [field_prime - 1, 3]),
+  }
+}
+
+/// Sanity check that the builtin really reduces mod `r`, which is what made
+/// #12 possible. It keeps passing after the fix, since the fix belongs in the
+/// verifier, not the builtin.
 test prop_g1_scalar_mul_reduces_mod_r(
   (x, k) via fuzz.tuple(fuzz.int_between(0, 10000), fuzz.int_between(1, 1000)),
 ) {

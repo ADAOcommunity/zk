@@ -93,7 +93,8 @@ pub fn pairing_check(
 }
 
 /// Main verification function. Returns `False` unless `inputs` has exactly one
-/// entry for each `vkIC` element after the first.
+/// entry for each `vkIC` element after the first, and each entry lies in
+/// `[0, r)`.
 pub fn verify(vk: VerifierKey, proof: Proof, inputs: List<Int>) -> Bool {
   when vk.vkIC is {
     [] -> fail @"empty vkIC?"

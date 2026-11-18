@@ -3,7 +3,7 @@
 - **Module:** `zkp/lib/groth/groth.ak`
 - **Status:** Functional, tested, unaudited
 - **Test results:**
-  - `aiken check` 3/3 in `tests/groth_tests`, 7/7 in `tests/groth_props`, plus 2/2 in `tests/inputs_tests` for the shared input check (part of 69/69 across the package)
+  - `aiken check` 3/3 in `tests/groth_tests`, 8/8 in `tests/groth_props`, plus 3/3 in `tests/inputs_tests` for the shared input check (part of 71/71 across the package)
   - `aiken fmt` clean
   - `aiken build` succeeds
 
@@ -42,7 +42,7 @@ The `Compressed*` types are the wire/datum format: standard 48-byte (G1) and 96-
 **Entry points**
 
 - `uncompress_vk(CompressedVK) -> VerifierKey`, `uncompress_proof(CompressedProof) -> Proof` - decode the wire format via native decompression.
-- `verify(vk, proof, inputs) -> Bool` - the core verifier, operating on already-decompressed types. Returns `False` unless there is exactly one input per `vkIC` entry after the first.
+- `verify(vk, proof, inputs) -> Bool` - the core verifier, operating on already-decompressed types. Returns `False` unless there is exactly one input per `vkIC` entry after the first and each lies in `[0, r)`.
 - `verify_compressed(vk, proof, inputs) -> Bool` - convenience wrapper that decompresses then calls `verify`; the function a validator is expected to call.
 - `pairing_check(...) -> Bool` and `derive(...) -> G1Element` - the two building blocks `verify` composes.
 
@@ -50,7 +50,7 @@ The `Compressed*` types are the wire/datum format: standard 48-byte (G1) and 96-
 
 **Decompression.** `uncompress_vk`/`uncompress_proof` call `bls12_381_g1_uncompress`/`bls12_381_g2_uncompress` directly - the native Plutus builtins - for every point. This is a deliberate departure from `lib/common/common.ak`, which contains its own hand-rolled `g1_compress`/`g1_decompress` pair built from manual modular arithmetic (`mod_inv`, a Tonelli-Shanks `mod_sqrt`, and a `miller_loop`/`final_exponentiation` pair that are explicitly placeholder stand-ins, by their own comments, for real `Fp12` arithmetic). `groth.ak` does not use any of it. Every point this module handles is validated as a genuine, in-subgroup curve point by the native builtin at decompression time, not by this package's own field simulation.
 
-**Public-input checks.** Before any curve arithmetic, `verify` calls `check_public_inputs` (`common/inputs.ak`, shared with the PLONK verifier), which requires exactly one input per `vkIC` entry after the first; otherwise `verify` returns `False`. The count check matters because a validator that reads inputs by position must never see a value the proof doesn't bind. Malformed inputs return `False` rather than trapping, so a caller can use the result in a branch.
+**Public-input checks.** Before any curve arithmetic, `verify` calls `check_public_inputs` (`common/inputs.ak`, shared with the PLONK verifier), which requires exactly one input per `vkIC` entry after the first and every input in `[0, r)`, where `r` is the scalar field order; otherwise `verify` returns `False`. The count check matters because a validator that reads inputs by position must never see a value the proof doesn't bind. The range check matters because `bls12_381_g1_scalar_mul` reduces its scalar mod `r`, so without it `x`, `x + r` and `x - r` would all give the same `K` and verify with the same proof, while a validator reading the input as a plain `Int` would see different values. Malformed inputs return `False` rather than trapping, so a caller can use the result in a branch.
 
 **Public-input combination.** `derive` folds the verification key's `vkIC` vector against the public inputs: `K = vkIC[0] + Σ inputs[i] · vkIC[i+1]`. It recurses on both lists in lockstep and fails if either runs out before the other, so a caller using `derive` directly can't have an input left out of `K` either.
 
@@ -82,15 +82,14 @@ Three unit tests in `tests/groth_tests.ak` exercise this module against external
 | `groth_verify_fail_1` | A proof with `A` and `C` swapped is rejected (`test ... fail`) |
 | `groth_verify_pass_2` | A second genuine proof, different public inputs, same verification key, verifies |
 
-`tests/groth_props.ak` adds property-based tests (using `aiken-lang/fuzz`, 100 random cases each). `prop_*` tests state behaviour that must hold for any input. `known_issue_*` tests pin a filed bug: they pass while the bug exists and fail once it's fixed, at which point they're replaced by the property named in their comment. Its properties: changing any public input to another value in `[0, r)` is rejected; replacing any of `A`, `B` or `C` with an unrelated valid curve point is rejected; and one to five extra inputs of any value are rejected ([#11](https://github.com/ADAOcommunity/zk/issues/11)). Unit tests there cover too few inputs and `derive` failing on an extra input. Each of these #11 tests was checked against the unfixed code, where it fails. Its known-issue test covers [#12](https://github.com/ADAOcommunity/zk/issues/12) (inputs not range-checked). `tests/inputs_tests.ak` checks `check_public_inputs` itself: any list passes for its own length and no other.
+`tests/groth_props.ak` adds property-based tests (using `aiken-lang/fuzz`, 100 random cases each). `prop_*` tests state behaviour that must hold for any input. Its properties: changing any public input to another value in `[0, r)` is rejected; replacing any of `A`, `B` or `C` with an unrelated valid curve point is rejected; one to five extra inputs of any value are rejected ([#11](https://github.com/ADAOcommunity/zk/issues/11)); and an input shifted by `k · r` in either direction is rejected ([#12](https://github.com/ADAOcommunity/zk/issues/12)). Unit tests there cover too few inputs, `derive` failing on an extra input, and the range boundaries (`r - 1` passes the range check, `r` and `-1` don't). Each of these was checked against the unfixed code, where it fails. `tests/inputs_tests.ak` checks `check_public_inputs` itself: any in-range list passes for its own length and no other, and one out-of-range value anywhere fails it.
 
-All three unit tests measure identically: ~83.7K memory units and ~2.80B CPU units per `verify_compressed` call, of which the public-input check is ~17K memory and ~5M CPU - comfortably inside Cardano's per-transaction execution budget, and the cheapest of this package's three verifiers by a wide margin, as expected given Groth16's constant-size, pairing-only verification equation.
+All three unit tests measure identically: ~89.6K memory units and ~2.80B CPU units per `verify_compressed` call, of which the public-input check is ~23K memory and ~6M CPU - comfortably inside Cardano's per-transaction execution budget, and the cheapest of this package's three verifiers by a wide margin, as expected given Groth16's constant-size, pairing-only verification equation.
 
 ## 8. Known limitations and roadmap
 
 - **No trusted-setup tooling.** This module consumes a `VerifierKey` but has no way to generate or attest to one; that must come from an external, circuit-specific ceremony this package neither runs nor audits.
 - **No on-chain prover, by design (§5).** Proof generation is out of scope; a production integration needs its own off-chain Groth16 prover (e.g. `snarkjs`, `arkworks`, or a `gnark` toolchain) feeding this verifier.
-- **Public inputs aren't range-checked.** Inputs aren't checked to lie in `[0, r)`, so `x` and `x + r` verify with the same proof ([#12](https://github.com/ADAOcommunity/zk/issues/12)), and a validator that reads an input as a plain `Int` can be given a value the proof doesn't bind. Pinned by a `known_issue_*` test in `tests/groth_props.ak`.
 - **Only two verification-key shapes have been exercised in tests**, both with `n_public = 2`. Larger `vkIC` vectors (more public inputs) are structurally supported by `derive`'s recursion but are unbenchmarked for execution-unit cost.
 - **No on-chain entry point yet.** Like the other two modules in this package, how a validator obtains and trusts a given `VerifierKey`/proof pair (datum/redeemer wiring) is separate, follow-on work.
 - **No external cryptographic audit.** As with the rest of this package, internal design review only; not a substitute for a formal audit before mainnet or high-value use.

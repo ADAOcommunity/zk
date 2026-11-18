@@ -11,8 +11,10 @@ use plonk/preinputs.{PreparedPlonkPreInputs}
 use plonk/proofs.{PreparedPlonkProof}
 
 /// Verify a PLONK proof. Returns `False` unless `pub_inputs` has exactly
-/// `n_public` entries. Without that check an input could be hashed into the
-/// transcript yet not be bound to a public-input row of the circuit.
+/// `n_public` entries, each in `[0, r)`. Without those checks an input could
+/// be hashed into the transcript yet not be bound to a public-input row of
+/// the circuit, or be read by a validator as a different value from the one
+/// the proof binds.
 pub fn verify_plonk(
   preinputs: PreparedPlonkPreInputs,
   pub_inputs: List<Int>,
@@ -24,8 +26,8 @@ pub fn verify_plonk(
   }
 }
 
-/// The verifier proper. Assumes the input count check in `verify_plonk`
-/// has passed.
+/// The verifier proper. Assumes the input count and range checks in
+/// `verify_plonk` have passed.
 fn verify_checked(
   preinputs: PreparedPlonkPreInputs,
   pub_inputs: List<Int>,

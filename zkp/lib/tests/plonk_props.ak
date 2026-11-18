@@ -63,6 +63,26 @@ test prop_plonk_rejects_tampered_evaluation(
   )
 }
 
+/// ADAOcommunity/zk#12: an input of `x + k * r` or `x - k * r` is rejected,
+/// although `scalar.from_int` maps it to the same scalar as `x`, in both the
+/// maths and the transcript.
+test prop_plonk_rejects_input_out_of_field(
+  (index, k, below) via fuzz.tuple3(
+    fuzz.int_between(0, 1),
+    fuzz.int_between(1, 1000),
+    fuzz.bool(),
+  ),
+) {
+  let shift =
+    if below {
+      -k * field_prime
+    } else {
+      k * field_prime
+    }
+  let inputs = update_at(test_plonk_pub_inputs, index, fn(x) { x + shift })
+  !plonk_verifies(test_plonk_proof_affine, inputs)
+}
+
 /// ADAOcommunity/zk#13: more inputs than `n_public` are rejected. An honest
 /// proof would fail anyway, because the extra values change the transcript, so
 /// this guards the count check but can't show the forgery the issue describes
@@ -88,17 +108,6 @@ test plonk_rejects_missing_input() {
 // ---------------------------------------------------------------------------
 // Known issues
 // ---------------------------------------------------------------------------
-
-/// ADAOcommunity/zk#12: an input of `x + k * r` verifies like `x`.
-/// Once fixed, replace with `prop_plonk_rejects_input_out_of_field` (the same
-/// call must fail).
-test known_issue_12_plonk_input_not_range_checked(
-  (index, k) via fuzz.tuple(fuzz.int_between(0, 1), fuzz.int_between(1, 1000)),
-) {
-  let inputs =
-    update_at(test_plonk_pub_inputs, index, fn(x) { x + k * field_prime })
-  plonk_verifies(test_plonk_proof_affine, inputs)
-}
 
 /// ADAOcommunity/zk#14: nothing checks the inverse list's length. Dropping the
 /// last inverse (the one for the surplus generator, #19) still verifies.
