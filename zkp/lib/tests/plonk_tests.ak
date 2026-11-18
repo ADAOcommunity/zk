@@ -278,12 +278,11 @@ test test_power_calculation() {
 }
 
 test test_generator_list_creation() {
-  let w = test_plonk_vkey_affine.w
-  let n_public = test_plonk_vkey_affine.n_public
-  let generator = scalar.from_int(w)
-  expect _generators =
-    list.map(list.range(0, n_public), fn(i) { scalar.scale(generator, i) })
-  True
+  let generator = scalar.from_int(test_plonk_vkey_affine.w)
+  prepare_affine_vkey(test_plonk_vkey_affine).generators == [
+    scalar.scale(generator, 0),
+    scalar.scale(generator, 1),
+  ]
 }
 
 // ===========================================================================

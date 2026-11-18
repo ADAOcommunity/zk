@@ -6,7 +6,9 @@ use aiken/collection/list
 use aiken/crypto/bls12_381/scalar.{field_prime}
 use aiken/fuzz
 use plonk/proofs.{PreparedPlonkProof, plonk_prepare_proof}
-use plonk/raw_affine.{AffineProof, prepare_affine_proof, prepare_affine_vkey}
+use plonk/raw_affine.{
+  AffineProof, AffineVerificationKey, prepare_affine_proof, prepare_affine_vkey,
+}
 use plonk/verifier.{verify_plonk}
 use tests/groth_props.{nonzero_scalar, update_at}
 use tests/plonk_tests.{
@@ -129,4 +131,23 @@ test prop_plonk_rejects_wrong_inverse_count(
     pub_inputs: test_plonk_pub_inputs,
     proof: PreparedPlonkProof { ..prepared, lagrange_inverses: inverses },
   )
+}
+
+/// ADAOcommunity/zk#19: one generator per public input, and never fewer than
+/// one, since the permutation check always uses the first Lagrange term.
+test plonk_generators_match_n_public() {
+  let count =
+    fn(n) {
+      list.length(
+        prepare_affine_vkey(
+          AffineVerificationKey { ..test_plonk_vkey_affine, n_public: n },
+        ).generators,
+      )
+    }
+  and {
+    count(test_plonk_vkey_affine.n_public) == test_plonk_vkey_affine.n_public,
+    count(0) == 1,
+    count(1) == 1,
+    count(5) == 5,
+  }
 }
