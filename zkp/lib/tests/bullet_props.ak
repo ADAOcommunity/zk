@@ -2,11 +2,14 @@
 //// n = 8 (values in [0, 256)). See `tests/groth_props` for what the `prop_*`
 //// and `known_issue_*` prefixes mean.
 
+use aiken/collection/list
+use aiken/crypto
 use aiken/crypto/bls12_381/scalar.{field_prime}
 use aiken/fuzz
+use aiken/primitive/bytearray
 use bullet/bullet.{
-  BulletproofProof, BulletproofVerificationKey, commit_value,
-  generate_proof_deterministic, setup, verify,
+  BulletproofProof, BulletproofVerificationKey, ProofBlinding, commit_value,
+  generate_proof, setup, verify,
 }
 use tests/groth_props.{nonzero_scalar}
 
@@ -24,6 +27,32 @@ fn statement() -> Fuzzer<(Int, Int, ByteArray)> {
   )
 }
 
+/// Blinding factors derived from `seed`. Test-only: anyone who knows the seed
+/// can read the committed value back from the proof's `l_vec`.
+fn seeded_blinding(seed: ByteArray) -> ProofBlinding {
+  let draw =
+    fn(tag) {
+      scalar.from_bytes(crypto.blake2b_256(bytearray.concat(seed, tag)))
+    }
+  let draw_vec =
+    fn(tag) {
+      list.map(
+        list.range(0, n - 1),
+        fn(i) {
+          draw(bytearray.concat(tag, bytearray.from_int_big_endian(i, 4)))
+        },
+      )
+    }
+  ProofBlinding {
+    alpha: draw("alpha"),
+    rho: draw("rho"),
+    tau1: draw("tau1"),
+    tau2: draw("tau2"),
+    s_l: draw_vec("s_l"),
+    s_r: draw_vec("s_r"),
+  }
+}
+
 /// The key, a proof for `value`, and the matching commitment.
 fn prove(
   value: Int,
@@ -33,7 +62,7 @@ fn prove(
   let g = scalar.from_int(gamma)
   (
     vk,
-    generate_proof_deterministic(vk, value, g, seed),
+    generate_proof(vk, value, g, seeded_blinding(seed)),
     commit_value(vk, value, g),
   )
 }

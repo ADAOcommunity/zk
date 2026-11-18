@@ -133,7 +133,7 @@ At `n = 8`, a full `verify` call measures approximately 5.2M memory units and 14
 - **Execution-unit cost is unbenchmarked past `n = 8`.** The `max_n = 64` bound limits worst-case cost, but actual figures at `n = 32`/`64` should be measured before either is used in a real deployment.
 - **No on-chain entry point yet.** This module covers the cryptographic core; how a validator obtains and trusts a given `V` (datum/redeemer wiring) is separate, follow-on work.
 - **No external cryptographic audit.** This implementation has had internal design review and one external review pass; neither is a substitute for a formal audit before any mainnet or high-value use.
-- **The deterministic prover is a test fixture, not a production prover.** Aiken has no RNG, so `generate_proof` requires the caller to supply every blinding factor; `generate_proof_deterministic` exists only to make self-contained tests possible and is documented as such, though it is still public ([#18](https://github.com/ADAOcommunity/zk/issues/18)). A production integration must source genuine entropy for these values itself.
+- **The prover needs blinding from the caller.** Aiken has no RNG, so `generate_proof` requires the caller to supply every blinding factor, and a production integration must source genuine entropy for them. The tests derive theirs from a seed, which hides nothing: anyone with the seed can read the value back from `l_vec`. That seeded prover used to be public as `generate_proof_deterministic`; it is now private to the tests ([#18](https://github.com/ADAOcommunity/zk/issues/18)).
 
 ## 9. Conclusion
 

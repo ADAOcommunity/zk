@@ -126,17 +126,6 @@ pub fn generate_proof(
   }
 }
 
-/// Test-only convenience prover: derives blinding factors from a seed instead
-/// of requiring the caller to supply real entropy.
-pub fn generate_proof_deterministic(
-  vk: BulletproofVerificationKey,
-  value: Int,
-  gamma: State<Scalar>,
-  seed: ByteArray,
-) -> BulletproofProof {
-  generate_proof(vk, value, gamma, derive_blinding(seed, vk.n))
-}
-
 fn generate_proof_unchecked(
   vk: BulletproofVerificationKey,
   value: Int,
@@ -236,6 +225,9 @@ fn scalar_from_bit(b: Int) -> State<Scalar> {
   s
 }
 
+/// Blinding factors from a seed, for the tests below only. Anyone who knows
+/// the seed can read the committed value back from the proof's `l_vec`, so a
+/// real prover must supply fresh random blinding to `generate_proof`.
 fn derive_blinding(seed: ByteArray, n: Int) -> ProofBlinding {
   let alpha = hash_to_scalar(bytearray.concat(seed, "alpha"))
   let rho = hash_to_scalar(bytearray.concat(seed, "rho"))
@@ -478,7 +470,7 @@ test range_proof_valid() {
   let vk = setup(8)
   let gamma = scalar.from_int(12345)
   let value = 200
-  let proof = generate_proof_deterministic(vk, value, gamma, "seed-1")
+  let proof = generate_proof(vk, value, gamma, derive_blinding("seed-1", vk.n))
   let v_commit = commit_value(vk, value, gamma)
   verify(vk, v_commit, proof)
 }
@@ -487,7 +479,7 @@ test range_proof_valid_zero() {
   let vk = setup(8)
   let gamma = scalar.from_int(777)
   let value = 0
-  let proof = generate_proof_deterministic(vk, value, gamma, "seed-2")
+  let proof = generate_proof(vk, value, gamma, derive_blinding("seed-2", vk.n))
   let v_commit = commit_value(vk, value, gamma)
   verify(vk, v_commit, proof)
 }
@@ -496,7 +488,7 @@ test range_proof_valid_max() {
   let vk = setup(8)
   let gamma = scalar.from_int(9999)
   let value = 255
-  let proof = generate_proof_deterministic(vk, value, gamma, "seed-3")
+  let proof = generate_proof(vk, value, gamma, derive_blinding("seed-3", vk.n))
   let v_commit = commit_value(vk, value, gamma)
   verify(vk, v_commit, proof)
 }
@@ -505,7 +497,7 @@ test range_proof_fails_wrong_commitment() {
   let vk = setup(8)
   let gamma = scalar.from_int(12345)
   let value = 200
-  let proof = generate_proof_deterministic(vk, value, gamma, "seed-4")
+  let proof = generate_proof(vk, value, gamma, derive_blinding("seed-4", vk.n))
   let wrong_commit = commit_value(vk, value + 1, gamma)
   !verify(vk, wrong_commit, proof)
 }
@@ -514,7 +506,7 @@ test range_proof_fails_tampered_tau_x() {
   let vk = setup(8)
   let gamma = scalar.from_int(12345)
   let value = 200
-  let proof = generate_proof_deterministic(vk, value, gamma, "seed-5")
+  let proof = generate_proof(vk, value, gamma, derive_blinding("seed-5", vk.n))
   let v_commit = commit_value(vk, value, gamma)
   let tampered =
     BulletproofProof {
@@ -528,7 +520,7 @@ test range_proof_fails_tampered_l_vec() {
   let vk = setup(8)
   let gamma = scalar.from_int(12345)
   let value = 200
-  let proof = generate_proof_deterministic(vk, value, gamma, "seed-6")
+  let proof = generate_proof(vk, value, gamma, derive_blinding("seed-6", vk.n))
   let v_commit = commit_value(vk, value, gamma)
   expect [first, ..rest] = proof.l_vec
   let tampered =
@@ -543,7 +535,7 @@ test range_proof_fails_wrong_vector_length() {
   let vk = setup(8)
   let gamma = scalar.from_int(12345)
   let value = 200
-  let proof = generate_proof_deterministic(vk, value, gamma, "seed-7")
+  let proof = generate_proof(vk, value, gamma, derive_blinding("seed-7", vk.n))
   let v_commit = commit_value(vk, value, gamma)
   expect [_, ..rest] = proof.l_vec
   let tampered = BulletproofProof { ..proof, l_vec: rest }
