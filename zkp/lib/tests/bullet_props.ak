@@ -85,24 +85,16 @@ test prop_bullet_rejects_tampered_proof(
   !verify(vk, commitment, tampered)
 }
 
-// ---------------------------------------------------------------------------
-// Known issues
-// ---------------------------------------------------------------------------
-
-/// ADAOcommunity/zk#16: `commit_value` reduces mod r, so a commitment built
-/// from `value + k * r` (including negative k, i.e. a negative amount) matches
-/// the proof for `value`. Once fixed, replace with
-/// `prop_bullet_commit_value_rejects_out_of_field` (the same call must fail).
-test known_issue_16_bullet_commit_value_reduces_mod_r(
-  ((value, gamma, seed), k) via fuzz.tuple(
+/// ADAOcommunity/zk#16: `commit_value` fails for `value + k * r` (with
+/// negative k, a negative amount), where it used to return the same point as
+/// for `value`.
+test prop_bullet_commit_value_rejects_out_of_field(
+  ((value, gamma, _), k) via fuzz.tuple(
     statement(),
     fuzz.either(fuzz.int_between(-1000, -1), fuzz.int_between(1, 1000)),
   ),
-) {
-  let (vk, proof, _) = prove(value, gamma, seed)
-  verify(
-    vk,
-    commit_value(vk, value + k * field_prime, scalar.from_int(gamma)),
-    proof,
-  )
+) fail {
+  let vk = setup(n)
+  let g = scalar.from_int(gamma)
+  commit_value(vk, value + k * field_prime, g) == commit_value(vk, value, g)
 }

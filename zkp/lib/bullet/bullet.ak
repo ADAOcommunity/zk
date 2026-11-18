@@ -84,13 +84,21 @@ pub fn setup(n: Int) -> BulletproofVerificationKey {
 }
 
 /// Public Pedersen commitment to a hidden value: V = g^value * h^gamma.
+///
+/// Fails unless `0 <= value < r`, the order of the scalar field. Exponents
+/// are taken mod `r`, so without this check `value + k * r` (a negative
+/// amount included) would give the same point as `value`, and a range proof
+/// for `value` would verify against it.
 pub fn commit_value(
   vk: BulletproofVerificationKey,
   value: Int,
   gamma: State<Scalar>,
 ) -> G1Element {
-  let value_scalar = scalar.from_int(value)
-  g1.add(g1.scale(vk.g, value_scalar), g1.scale(vk.h, gamma))
+  if value < 0 || value >= scalar.field_prime {
+    fail @"value must be in [0, r)"
+  } else {
+    g1.add(g1.scale(vk.g, scalar.from_int(value)), g1.scale(vk.h, gamma))
+  }
 }
 
 /// Generate a range proof that `value` lies in `[0, 2^vk.n)` given a Pedersen
@@ -530,6 +538,27 @@ test range_proof_fails_wrong_vector_length() {
   expect [_, ..rest] = proof.l_vec
   let tampered = BulletproofProof { ..proof, l_vec: rest }
   !verify(vk, v_commit, tampered)
+}
+
+test commit_value_rejects_r() fail {
+  let vk = setup(8)
+  let gamma = scalar.from_int(12345)
+  commit_value(vk, scalar.field_prime, gamma) == commit_value(vk, 0, gamma)
+}
+
+test commit_value_rejects_negative() fail {
+  let vk = setup(8)
+  let gamma = scalar.from_int(12345)
+  commit_value(vk, -1, gamma) == commit_value(vk, scalar.field_prime - 1, gamma)
+}
+
+test commit_value_accepts_field_boundary() {
+  let vk = setup(8)
+  let gamma = scalar.from_int(12345)
+  g1.equal(
+    commit_value(vk, scalar.field_prime - 1, gamma),
+    g1.sub(commit_value(vk, 0, gamma), vk.g),
+  )
 }
 
 test generate_proof_rejects_out_of_range() fail {

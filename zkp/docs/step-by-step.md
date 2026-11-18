@@ -178,6 +178,7 @@ Bulletproofs require no trusted ceremony. All generators are derived determinist
   V = g^v \cdot h^\gamma
   \]
 - \( V \) is the only public input the verifier receives about \( v \); the proof never reveals \( v \) or \( \gamma \).
+- `commit_value` takes \( v \) as an integer and fails unless \( 0 \le v < r \), the order of the scalar field. Exponents are taken mod \( r \), so without that check \( v + k \cdot r \), a negative amount included, would give the same \( V \) as \( v \).
 
 The verification key is computed once off-chain and embedded as a deployed constant; it must not be recomputed per transaction.
 
