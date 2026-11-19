@@ -43,6 +43,23 @@ pub type BulletproofProof {
   r_vec: List<State<Scalar>>,
 }
 
+/// A `BulletproofProof` as plain data, so it can come from a redeemer or datum.
+/// `BulletproofProof` itself can't: its scalars are `State<Scalar>`, which is
+/// opaque, so Aiken won't decode one from `Data`. Here each point is a 48-byte
+/// compressed G1 encoding and each scalar an `Int` in `[0, r)`, where `r` is the
+/// order of the scalar field. `uncompress_proof` turns it into a proof for
+/// `verify`.
+pub type CompressedBulletproofProof {
+  a: ByteArray,
+  s: ByteArray,
+  t1: ByteArray,
+  t2: ByteArray,
+  tau_x: Int,
+  mu: Int,
+  l_vec: List<Int>,
+  r_vec: List<Int>,
+}
+
 pub type ProofBlinding {
   alpha: State<Scalar>,
   rho: State<Scalar>,
@@ -348,6 +365,56 @@ pub fn verify(
   }
 }
 
+/// Decode a proof taken from a redeemer or datum.
+///
+/// Fails unless every point is a valid compressed G1 point in the prime-order
+/// subgroup (`g1.decompress` checks this) and every scalar lies in `[0, r)`.
+/// Scalars are used mod `r`, so without the range check `x + r` or `x - r`
+/// would decode to the same scalar as `x`, and one proof would have many
+/// encodings that all verify. The Groth16 and PLONK public inputs are checked
+/// the same way. Vector lengths are left to `verify`, which returns `False`
+/// unless `l_vec` and `r_vec` each have `n` entries.
+///
+/// It fails rather than returning `None`, like `commit_value` and the Groth16
+/// and PLONK proof decoders. A bad point can't be reported any other way:
+/// `g1.decompress` is a builtin that fails on one. In a validator, a failed
+/// decode fails the transaction, as a `False` from `verify` would.
+pub fn uncompress_proof(proof: CompressedBulletproofProof) -> BulletproofProof {
+  BulletproofProof {
+    a: g1.decompress(proof.a),
+    s: g1.decompress(proof.s),
+    t1: g1.decompress(proof.t1),
+    t2: g1.decompress(proof.t2),
+    tau_x: scalar_in_field(proof.tau_x),
+    mu: scalar_in_field(proof.mu),
+    l_vec: list.map(proof.l_vec, scalar_in_field),
+    r_vec: list.map(proof.r_vec, scalar_in_field),
+  }
+}
+
+/// Encode a proof as plain data for a redeemer or datum; `uncompress_proof`
+/// reverses it.
+pub fn compress_proof(proof: BulletproofProof) -> CompressedBulletproofProof {
+  CompressedBulletproofProof {
+    a: g1.compress(proof.a),
+    s: g1.compress(proof.s),
+    t1: g1.compress(proof.t1),
+    t2: g1.compress(proof.t2),
+    tau_x: scalar.to_int(proof.tau_x),
+    mu: scalar.to_int(proof.mu),
+    l_vec: list.map(proof.l_vec, scalar.to_int),
+    r_vec: list.map(proof.r_vec, scalar.to_int),
+  }
+}
+
+fn scalar_in_field(x: Int) -> State<Scalar> {
+  if x < 0 || x >= scalar.field_prime {
+    fail @"scalar must be in [0, r)"
+  } else {
+    scalar.from_int(x)
+  }
+}
+
 /// `u` is intentionally included even though the current two-check verifier
 /// does not use it. Binding `u` into every transcript hash ties the challenges
 /// to the full protocol identity — a future IPA phase that activates `u` will
@@ -579,4 +646,56 @@ test range_proof_fails_out_of_range_bypassing_guard() {
   let proof = generate_proof_unchecked(vk, value, gamma, blinding)
   let v_commit = commit_value(vk, value, gamma)
   !verify(vk, v_commit, proof)
+}
+
+/// A valid proof's commitment and plain-data encoding, for the tests below.
+fn compressed_fixture() -> (
+  BulletproofVerificationKey,
+  G1Element,
+  CompressedBulletproofProof,
+) {
+  let vk = setup(8)
+  let gamma = scalar.from_int(12345)
+  let value = 200
+  let proof = generate_proof(vk, value, gamma, derive_blinding("seed-10", vk.n))
+  (vk, commit_value(vk, value, gamma), compress_proof(proof))
+}
+
+test compressed_proof_round_trip() {
+  let (vk, v_commit, compressed) = compressed_fixture()
+  let proof = uncompress_proof(compressed)
+  and {
+    verify(vk, v_commit, proof),
+    compress_proof(proof) == compressed,
+  }
+}
+
+test uncompress_proof_rejects_tau_x_plus_r() fail {
+  let (vk, v_commit, compressed) = compressed_fixture()
+  let shifted =
+    CompressedBulletproofProof {
+      ..compressed,
+      tau_x: compressed.tau_x + scalar.field_prime,
+    }
+  verify(vk, v_commit, uncompress_proof(shifted))
+}
+
+test uncompress_proof_rejects_negative_l_vec_entry() fail {
+  let (vk, v_commit, compressed) = compressed_fixture()
+  expect [first, ..rest] = compressed.l_vec
+  let shifted =
+    CompressedBulletproofProof {
+      ..compressed,
+      l_vec: [first - scalar.field_prime, ..rest],
+    }
+  verify(vk, v_commit, uncompress_proof(shifted))
+}
+
+/// x = 1 is not the x-coordinate of any point on the curve.
+test uncompress_proof_rejects_point_off_curve() fail {
+  let (_, _, compressed) = compressed_fixture()
+  let off_curve =
+    #"800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+  let bad = CompressedBulletproofProof { ..compressed, t2: off_curve }
+  g1.compress(uncompress_proof(bad).t2) == off_curve
 }
