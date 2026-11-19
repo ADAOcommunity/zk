@@ -3,7 +3,7 @@
 - **Module:** `zkp/lib/bullet/bullet.ak`
 - **Status:** Functional, tested, unaudited
 - **Test results:** 
-  - `aiken check` 17/17 in `bullet/bullet`, plus 7/7 property tests in `tests/bullet_props` (part of 89/89 across the package)
+  - `aiken check` 17/17 in `bullet/bullet`, plus 7/7 property tests in `tests/bullet_props` (part of 93/93 across the package)
   - `aiken fmt` clean
   - `aiken build` succeeds
 

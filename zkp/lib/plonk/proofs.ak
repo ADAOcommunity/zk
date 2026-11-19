@@ -4,6 +4,7 @@ use aiken/crypto/bitwise.{State}
 use aiken/crypto/bls12_381/g1
 use aiken/crypto/bls12_381/scalar.{Scalar, field_prime}
 use common/common.{concat_and_keccak_256}
+use common/inputs.{scalar_in_field}
 use plonk/preinputs.{PreparedPlonkPreInputs}
 
 pub type PlonkProof {
@@ -43,6 +44,12 @@ pub type PreparedPlonkProof {
   lagrange_inverses: List<State<Scalar>>,
 }
 
+/// Decode a proof and compute its Lagrange inverses for `verify_plonk`. Fails
+/// unless every point is a valid compressed G1 point in the prime-order
+/// subgroup (`g1.decompress` checks this) and every evaluation lies in
+/// `[0, r)`. The evaluations are hashed into the transcript only after they
+/// are reduced mod `r`, so without the range check `x` and `x + r` would
+/// verify alike, and one proof would have many encodings.
 pub fn plonk_prepare_proof(
   preinputs: PreparedPlonkPreInputs,
   pub_inputs: List<Int>,
@@ -104,13 +111,13 @@ pub fn plonk_prepare_proof(
   let w_omega = g1.decompress(proof.w_omega)
   let w_omega_zeta = g1.decompress(proof.w_omega_zeta)
 
-  // convert polynomial evaluations
-  let a_eval: State<Scalar> = scalar.from_int(proof.a_eval)
-  let b_eval: State<Scalar> = scalar.from_int(proof.b_eval)
-  let c_eval: State<Scalar> = scalar.from_int(proof.c_eval)
-  let s_sig1_p: State<Scalar> = scalar.from_int(proof.s_sig1_p)
-  let s_sig2_p: State<Scalar> = scalar.from_int(proof.s_sig2_p)
-  let z_omega: State<Scalar> = scalar.from_int(proof.z_omega)
+  // convert polynomial evaluations, failing unless each is in [0, r)
+  let a_eval: State<Scalar> = scalar_in_field(proof.a_eval)
+  let b_eval: State<Scalar> = scalar_in_field(proof.b_eval)
+  let c_eval: State<Scalar> = scalar_in_field(proof.c_eval)
+  let s_sig1_p: State<Scalar> = scalar_in_field(proof.s_sig1_p)
+  let s_sig2_p: State<Scalar> = scalar_in_field(proof.s_sig2_p)
+  let z_omega: State<Scalar> = scalar_in_field(proof.z_omega)
 
   PreparedPlonkProof {
     commitment_a,
