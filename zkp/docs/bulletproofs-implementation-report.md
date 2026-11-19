@@ -22,7 +22,7 @@ This report covers the implementation as it stands: what was built, how it works
 | `lib/groth` | Groth16 | Trusted, circuit-specific | Pairings (`bls12_381_miller_loop`, `bls12_381_final_verify`) |
 | `lib/plonk` | PLONK | Universal, trusted | Kate commitments, permutation argument |
 | `lib/bullet` | Bulletproofs | Public, trustless | Discrete-log / Pedersen commitments, no pairings |
-| `lib/common` | — | — | Shared field/point scaffolding, superseded in this module (see §4) |
+| `lib/common` | — | — | Shared constants, hashing and sums, affine point checks, the public-input check |
 
 All 3 modules follow the same conventions (error handling, test structure) adopted here.
 
