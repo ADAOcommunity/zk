@@ -10,7 +10,7 @@ This implementation is designed for Plutus v3, leveraging its built-in BLS12-381
 
 ## Status
 
-All three verifiers are functional, covered by unit and property-based tests, and build cleanly (`aiken check` / `aiken build`, 79/79 tests passing). Both SNARK verifiers check the count and range of their public inputs. Known issues are tracked as [open issues](https://github.com/ADAOcommunity/zk/issues), and the ones a test can show are pinned by `known_issue_*` tests. Each is **verification-only**: proof generation, circuit compilation, and (for Groth16/PLONK) trusted setup are assumed to happen off-chain, using external tooling this library does not provide. Full architecture, security arguments, and known limitations for each are written up in [`zkp/docs/`](./zkp/docs).
+All three verifiers are functional, covered by unit and property-based tests, and build cleanly (`aiken check` / `aiken build`, 89/89 tests passing). Both SNARK verifiers check the count and range of their public inputs. Known issues are tracked as [open issues](https://github.com/ADAOcommunity/zk/issues), and the ones a test can show are pinned by `known_issue_*` tests. Each is **verification-only**: proof generation, circuit compilation, and (for Groth16/PLONK) trusted setup are assumed to happen off-chain, using external tooling this library does not provide. Full architecture, security arguments, and known limitations for each are written up in [`zkp/docs/`](./zkp/docs).
 
 ### Groth16
 
