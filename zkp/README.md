@@ -9,8 +9,9 @@ lib/
   groth/    Groth16 verifier
   plonk/    PLONK verifier
   bullet/   Bulletproofs range-proof verifier and reference prover
-  common/   Shared field/point scaffolding (legacy; superseded by native BLS12-381
-            builtins inside groth/plonk/bullet — see docs/ for details)
+  common/   Shared helpers: BLS12-381 constants, transcript hash and sums
+            (common.ak), affine point checks and compression (blst_affine.ak),
+            and the public-input check (inputs.ak)
   tests/    Unit tests for groth and plonk (bullet's unit tests live alongside
             bullet.ak), property-based tests for all three (*_props.ak),
             and tests for the common helpers (common_tests.ak)

@@ -22,7 +22,7 @@ This report covers the implementation as it stands: what was built, how it works
 | `lib/groth` | Groth16 | Trusted, circuit-specific | Pairings (`bls12_381_miller_loop`, `bls12_381_final_verify`) |
 | `lib/plonk` | PLONK | Universal, trusted | Kate commitments, permutation argument |
 | `lib/bullet` | Bulletproofs | Public, trustless | Discrete-log / Pedersen commitments, no pairings |
-| `lib/common` | — | — | Shared field/point scaffolding, superseded in this module (see §4) |
+| `lib/common` | — | — | Shared constants, hashing and sums, affine point checks, the public-input check |
 
 Groth16 sits at the opposite end of the setup-trust spectrum from Bulletproofs: it requires the smallest, cheapest verifier of the three (four pairings, no polynomial commitments, no vector openings) at the cost of a per-circuit trusted ceremony that must be run and attested to outside this codebase.
 
@@ -48,19 +48,19 @@ The `Compressed*` types are the wire/datum format: standard 48-byte (G1) and 96-
 
 ## 4. Protocol walkthrough
 
-**Decompression.** `uncompress_vk`/`uncompress_proof` call `bls12_381_g1_uncompress`/`bls12_381_g2_uncompress` directly - the native Plutus builtins - for every point. This is a deliberate departure from `lib/common/common.ak`, which contains its own hand-rolled `g1_compress`/`g1_decompress` pair built from manual modular arithmetic (`mod_inv`, a Tonelli-Shanks `mod_sqrt`, and a `miller_loop`/`final_exponentiation` pair that are explicitly placeholder stand-ins, by their own comments, for real `Fp12` arithmetic). `groth.ak` does not use any of it. Every point this module handles is validated as a genuine, in-subgroup curve point by the native builtin at decompression time, not by this package's own field simulation.
+**Decompression.** `uncompress_vk`/`uncompress_proof` call `bls12_381_g1_uncompress`/`bls12_381_g2_uncompress` directly - the native Plutus builtins - for every point, so every point this module handles is validated as a genuine, in-subgroup curve point by the native builtin at decompression time. The package has no group or pairing arithmetic of its own.
 
 **Public-input checks.** Before any curve arithmetic, `verify` calls `check_public_inputs` (`common/inputs.ak`, shared with the PLONK verifier), which requires exactly one input per `vkIC` entry after the first and every input in `[0, r)`, where `r` is the scalar field order; otherwise `verify` returns `False`. The count check matters because a validator that reads inputs by position must never see a value the proof doesn't bind. The range check matters because `bls12_381_g1_scalar_mul` reduces its scalar mod `r`, so without it `x`, `x + r` and `x - r` would all give the same `K` and verify with the same proof, while a validator reading the input as a plain `Int` would see different values. Malformed inputs return `False` rather than trapping, so a caller can use the result in a branch.
 
 **Public-input combination.** `derive` folds the verification key's `vkIC` vector against the public inputs: `K = vkIC[0] + Σ inputs[i] · vkIC[i+1]`. It recurses on both lists in lockstep and fails if either runs out before the other, so a caller using `derive` directly can't have an input left out of `K` either.
 
-**Pairing check.** `verify` calls `pairing_check(A, B, C, delta, alpha, beta, K, gamma)`, which computes four Miller loops - `e(A,B)`, `e(alpha,beta)`, `e(K,gamma)`, `e(C,delta)` - combines the latter three with `bls12_381_mul_miller_loop_result`, and finishes with a single `bls12_381_final_verify(e(A,B), combined)`. This checks the canonical Groth16 equation `e(A,B) = e(alpha,beta) · e(C,delta) · e(K,gamma)` using the ledger-native pairing builtins throughout - there is no custom `Fp12` code anywhere in this path, unlike `common.ak`'s placeholder pairing functions.
+**Pairing check.** `verify` calls `pairing_check(A, B, C, delta, alpha, beta, K, gamma)`, which computes four Miller loops - `e(A,B)`, `e(alpha,beta)`, `e(K,gamma)`, `e(C,delta)` - combines the latter three with `bls12_381_mul_miller_loop_result`, and finishes with a single `bls12_381_final_verify(e(A,B), combined)`. This checks the canonical Groth16 equation `e(A,B) = e(alpha,beta) · e(C,delta) · e(K,gamma)` using the ledger-native pairing builtins throughout - there is no custom `Fp12` code anywhere in this path.
 
-## 5. Design differentiation from a naive port and from `common.ak`
+## 5. Design differentiation from a naive port
 
 **Verifier-only, by design, not by omission.** This module has no `generate_proof` and no setup routine. That is the correct shape for Groth16 in this context: the trusted setup is a circuit-specific ceremony that must be run once, off-chain, by parties independent of this codebase, and the proof itself requires a full R1CS/QAP witness computation this package does not and should not reimplement. Contrast this with `lib/bullet`, which owns both prover and verifier because Bulletproofs' public-parameter model makes that safe to do in one place; Groth16's trust model makes the equivalent choice here unsafe, so it isn't made.
 
-**Native decompression instead of `common.ak`'s field simulation.** As in §4, every group element in this module is validated by the audited native builtin at the point it enters the system, rather than by this package's own coordinate-wise modular arithmetic. This is the same departure documented in the Bulletproofs report for the `bullet` module, applied identically here: `common.ak` is retained in the package for reference/legacy reasons but is not part of the trusted path this verifier relies on.
+**Native decompression, no field simulation.** As in §4, every group element in this module is validated by the audited native builtin at the point it enters the system, rather than by coordinate-wise modular arithmetic of the package's own. The Bulletproofs report documents the same choice for the `bullet` module.
 
 **Tested against externally-generated fixtures, not self-generated proofs.** Because Groth16's setup and proving are out of scope for this codebase, the three tests in `lib/tests/groth_tests.ak` verify fixed, externally-produced `(VK, proof, public_inputs)` triples rather than round-tripping a proof this package generated itself. This is the inverse of the Bulletproofs module's testing posture (§7 of the Bulletproofs report), where prover and verifier are co-tested in-language; here, the verifier is the only thing this codebase owns, so the fixtures stand in for a circuit and ceremony this codebase cannot itself produce.
 

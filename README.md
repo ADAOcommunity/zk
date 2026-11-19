@@ -61,7 +61,7 @@ Wishlist:
 
 - Affine point operations - conversion to/from native types (`zkp/lib/common/blst_affine.ak`)
 - Public-input check shared by Groth16 and PLONK: exact count, every input in `[0, r)` (`zkp/lib/common/inputs.ak`)
-- Field arithmetic utilities (`zkp/lib/common/common.ak`) — largely superseded by native BLS12-381 builtins inside the three verifiers above; see the implementation reports for where and why. The verifiers use only its BLS12-381 constants and three small helpers (tested in `zkp/lib/tests/common_tests.ak`); the rest is legacy code with known defects ([#20](https://github.com/ADAOcommunity/zk/issues/20))
+- BLS12-381 constants, the PLONK transcript hash, and scalar and G1 sums (`zkp/lib/common/common.ak`, tested in `zkp/lib/tests/common_tests.ak`).
 
 ## Aspirational ZKP Systems
 

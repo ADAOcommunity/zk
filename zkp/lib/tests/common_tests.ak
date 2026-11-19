@@ -1,8 +1,6 @@
-//// Unit and property tests for the parts of `common/common` that the
-//// verifiers depend on: the two BLS12-381 constants (used by `blst_affine`),
-//// `concat_and_keccak_256` (the PLONK transcript), and `scalar_sum` and
-//// `g1_sum` (the PLONK verifier's sums). The rest of `common/common` is legacy
-//// code that no verifier calls; see the implementation reports.
+//// Unit and property tests for `common/common`: the two BLS12-381 constants
+//// (used by `blst_affine`), `concat_and_keccak_256` (the PLONK transcript),
+//// and `scalar_sum` and `g1_sum` (the PLONK verifier's sums).
 
 use aiken/collection/list
 use aiken/crypto
