@@ -4,6 +4,7 @@ use aiken/crypto/bitwise.{State}
 use aiken/crypto/bls12_381/g1
 use aiken/crypto/bls12_381/scalar.{Scalar}
 use aiken/primitive/bytearray
+use common/inputs.{scalar_in_field}
 
 /// Prepended to every generator derivation and transcript hash so this
 /// protocol's challenges/generators can never collide with another
@@ -404,14 +405,6 @@ pub fn compress_proof(proof: BulletproofProof) -> CompressedBulletproofProof {
     mu: scalar.to_int(proof.mu),
     l_vec: list.map(proof.l_vec, scalar.to_int),
     r_vec: list.map(proof.r_vec, scalar.to_int),
-  }
-}
-
-fn scalar_in_field(x: Int) -> State<Scalar> {
-  if x < 0 || x >= scalar.field_prime {
-    fail @"scalar must be in [0, r)"
-  } else {
-    scalar.from_int(x)
   }
 }
 

@@ -24,18 +24,34 @@ pub fn plonk_verifies(proof: AffineProof, pub_inputs: List<Int>) -> Bool {
   verify_plonk(preinputs: preinputs, pub_inputs: pub_inputs, proof: prepared)
 }
 
-/// Add `delta` (mod r) to one of the six evaluation scalars.
-fn tamper_eval(proof: AffineProof, which: Int, delta: Int) -> AffineProof {
-  let bump =
-    fn(x) { ( x + delta ) % field_prime }
+/// Decode `proof` against the fixture key and inputs, as `plonk_verifies`
+/// does, without verifying it.
+fn prepare(proof: AffineProof) -> PreparedPlonkProof {
+  plonk_prepare_proof(
+    prepare_affine_vkey(test_plonk_vkey_affine),
+    test_plonk_pub_inputs,
+    prepare_affine_proof(proof),
+  )
+}
+
+/// Apply `f` to one of the six evaluation scalars.
+fn map_eval(proof: AffineProof, which: Int, f: fn(Int) -> Int) -> AffineProof {
   when which is {
-    0 -> AffineProof { ..proof, a_eval: bump(proof.a_eval) }
-    1 -> AffineProof { ..proof, b_eval: bump(proof.b_eval) }
-    2 -> AffineProof { ..proof, c_eval: bump(proof.c_eval) }
-    3 -> AffineProof { ..proof, s_sig1_p: bump(proof.s_sig1_p) }
-    4 -> AffineProof { ..proof, s_sig2_p: bump(proof.s_sig2_p) }
-    _ -> AffineProof { ..proof, z_omega: bump(proof.z_omega) }
+    0 -> AffineProof { ..proof, a_eval: f(proof.a_eval) }
+    1 -> AffineProof { ..proof, b_eval: f(proof.b_eval) }
+    2 -> AffineProof { ..proof, c_eval: f(proof.c_eval) }
+    3 -> AffineProof { ..proof, s_sig1_p: f(proof.s_sig1_p) }
+    4 -> AffineProof { ..proof, s_sig2_p: f(proof.s_sig2_p) }
+    _ -> AffineProof { ..proof, z_omega: f(proof.z_omega) }
   }
+}
+
+/// A nonzero multiple of `r` from `-1000 * r` to `1000 * r`.
+fn nonzero_multiple_of_r() -> Fuzzer<Int> {
+  fuzz.map(
+    fuzz.either(fuzz.int_between(-1000, -1), fuzz.int_between(1, 1000)),
+    fn(k) { k * field_prime },
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -56,12 +72,17 @@ test prop_plonk_rejects_changed_input(
   !plonk_verifies(test_plonk_proof_affine, inputs)
 }
 
-/// Changing any evaluation scalar in the proof must break it.
+/// Changing any evaluation scalar in the proof to another value in `[0, r)`
+/// must break it.
 test prop_plonk_rejects_tampered_evaluation(
   (which, delta) via fuzz.tuple(fuzz.int_between(0, 5), nonzero_scalar()),
 ) {
   !plonk_verifies(
-    tamper_eval(test_plonk_proof_affine, which, delta),
+    map_eval(
+      test_plonk_proof_affine,
+      which,
+      fn(x) { ( x + delta ) % field_prime },
+    ),
     test_plonk_pub_inputs,
   )
 }
@@ -195,5 +216,49 @@ test plonk_generators_match_n_public() {
     count(0) == 1,
     count(1) == 1,
     count(5) == 5,
+  }
+}
+
+/// ADAOcommunity/zk#28: `plonk_prepare_proof` fails when any of the six
+/// evaluations is given as `x + k * r` (negative when k < 0). The transcript
+/// hashes each evaluation only after reducing it mod `r`, so the shifted proof
+/// would otherwise verify exactly like the original.
+test prop_plonk_rejects_evaluation_out_of_field(
+  (which, shift) via fuzz.tuple(fuzz.int_between(0, 5), nonzero_multiple_of_r()),
+) fail {
+  plonk_verifies(
+    map_eval(test_plonk_proof_affine, which, fn(x) { x + shift }),
+    test_plonk_pub_inputs,
+  )
+}
+
+/// ADAOcommunity/zk#28: an evaluation of exactly `r` fails to decode. Without
+/// the check it would decode to zero, so this checks the decoding rather than
+/// verification, which a wrong evaluation fails anyway.
+test plonk_rejects_evaluation_equal_to_r() fail {
+  let proof = AffineProof { ..test_plonk_proof_affine, a_eval: field_prime }
+  prepare(proof).a_eval == scalar.from_int(0)
+}
+
+/// ADAOcommunity/zk#28: an evaluation of `-1` fails to decode, where it would
+/// otherwise decode to `r - 1`.
+test plonk_rejects_negative_evaluation() fail {
+  let proof = AffineProof { ..test_plonk_proof_affine, z_omega: -1 }
+  prepare(proof).z_omega == scalar.from_int(field_prime - 1)
+}
+
+/// ADAOcommunity/zk#28: the range check accepts both ends of `[0, r)`.
+test plonk_accepts_evaluation_field_boundary() {
+  let prepared =
+    prepare(
+      AffineProof {
+        ..test_plonk_proof_affine,
+        a_eval: 0,
+        z_omega: field_prime - 1,
+      },
+    )
+  and {
+    prepared.a_eval == scalar.from_int(0),
+    prepared.z_omega == scalar.from_int(field_prime - 1),
   }
 }
